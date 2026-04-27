@@ -10,14 +10,16 @@ static int handler(void *user, const char *section, const char *name,
 
   if (strcmp(section, "bundle") == 0) {
     if (strcmp(name, "aap2_socket") == 0) {
-      pconfig->aap2_socket = value;
+      pconfig->aap2_socket = strdup(value);
     } else if (strcmp(name, "remote_eid") == 0) {
-      pconfig->remote_eid = value;
+      pconfig->remote_eid = strdup(value);
     } else if (strcmp(name, "secret_name") == 0) {
-      pconfig->secret_name = value;
+      pconfig->secret_name = strdup(value);
     } else if (strcmp(section, "interface") == 0) {
       if (strcmp(name, "address") == 0) {
-        pconfig->address = value;
+        pconfig->address = strdup(value);
+      } else if (strcmp(name, "mtu") == 0) {
+        pconfig->mtu = atoi(value);
       } else {
         return 0; /* unknown name */
       }

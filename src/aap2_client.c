@@ -281,6 +281,7 @@ int listen_aap2(aap2_client *client) {
           aap2__aapmessage__free_unpacked(msg, NULL);
           return -1;
         }
+		// must do stuff here
 		log_info("Received ADU for EID %s, payload length %zu",
 		 msg->adu->dst_eid, msg->adu->payload_length);
         free(payload);

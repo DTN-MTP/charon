@@ -1,8 +1,9 @@
 typedef struct {
-  const char *aap2_socket;
-  const char *remote_eid;
-  const char *address;
-  const char *secret_name;
+  char *aap2_socket;
+  char *remote_eid;
+  char *address;
+  char *secret_name;
+  int mtu;
 } charon_config;
 
 charon_config *read_config(const char *filename);

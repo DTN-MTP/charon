@@ -11,3 +11,4 @@ int configure_aap2(aap2_client *client, int is_subscriber, Aap2__AuthType auth_t
 int send_aap2(aap2_client *client, const char *dst_eid, const uint8_t *payload, size_t payload_len);
 int close_aap2(aap2_client *client);
 int listen_aap2(aap2_client *client);
+int unpack_aap2_message(uint8_t *buffer, size_t buffer_len, Aap2__AAPMessage **message);
