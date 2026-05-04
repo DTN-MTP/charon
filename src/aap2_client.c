@@ -1,26 +1,32 @@
 #include "aap2_client.h"
 #include "log.h"
 #include "proto/aap2.pb-c.h"
-#include <stdio.h>
+#include <net/if.h>
+#include <netdb.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
 
-static int recv_exact(int fd, void *buf, size_t len) {
+int recv_exact(int fd, void *buf, size_t len) {
   size_t total = 0;
   while (total < len) {
     ssize_t n = recv(fd, (uint8_t *)buf + total, len - total, 0);
     if (n <= 0)
       return -1;
+    for (size_t i = 0; i < (size_t)n; i++) {
+      printf("%02x ", ((uint8_t *)buf)[total + i]);
+    }
+    printf("\n");
     total += n;
   }
 
   return 0;
 }
 
-static int recv_varint(int fd, uint64_t *out) {
+int recv_varint(int fd, uint64_t *out) {
   *out = 0;
   for (int shift = 0; shift < 64; shift += 7) {
     uint8_t b;
@@ -33,274 +39,187 @@ static int recv_varint(int fd, uint64_t *out) {
   return -1;
 }
 
-static int send_varint(int fd, uint64_t value) {
-  uint8_t buf[10];
-  int i = 0;
-  do {
-    buf[i] = value & 0x7F;
-    value >>= 7;
-    if (value)
-      buf[i] |= 0x80;
-    i++;
-  } while (value);
-  ssize_t nsent = send(fd, buf, i, 0);
-  return (nsent == i) ? 0 : -1;
-}
+aap2info getaap2info(const char *aap2_url) {
+  aap2info aap2_addr;
+  memset(&aap2_addr, 0, sizeof(aap2_addr));
 
-static int send_aap_response(int fd, Aap2__ResponseStatus status) {
-  Aap2__AAPResponse resp = AAP2__AAPRESPONSE__INIT;
-  resp.response_status = status;
-
-  size_t packed_size = aap2__aapresponse__get_packed_size(&resp);
-  uint8_t *buf = malloc(packed_size);
-  aap2__aapresponse__pack(&resp, buf);
-
-  int ret = send_varint(fd, packed_size);
-  if (ret == 0) {
-    ssize_t nsent = send(fd, buf, packed_size, 0);
-    if (nsent != (ssize_t)packed_size)
-      ret = -1;
-  }
-  free(buf);
-  return ret;
-}
-
-static Aap2__AAPResponse *recv_aap_response(int fd) {
-  uint64_t msg_len;
-  if (recv_varint(fd, &msg_len) < 0)
-    return NULL;
-  uint8_t *buf = malloc(msg_len);
-  if (recv_exact(fd, buf, msg_len) < 0) {
-    free(buf);
-    return NULL;
-  }
-  Aap2__AAPResponse *resp = aap2__aapresponse__unpack(NULL, msg_len, buf);
-  free(buf);
-  return resp;
-}
-
-aap2_client *connect_aap2(const char *path) {
-  int socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
-  struct sockaddr_un addr;
-  if (socket_fd < 0) {
-    log_error("Failed to create socket");
-    exit(1);
-  }
-  memset(&addr, 0, sizeof(addr));
-  addr.sun_family = AF_UNIX;
-  strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
-
-  int ret = connect(socket_fd, (struct sockaddr *)&addr, sizeof(addr));
-  if (ret < 0) {
-    perror("Failed to connect to AAP2 socket");
+  char *url = strdup(aap2_url);
+  if (!url) {
+    log_error("OOM");
     exit(1);
   }
 
-  // Read the one-time marker byte sent by the server
-  uint8_t marker;
-  if (recv_exact(socket_fd, &marker, 1) < 0 || marker != 0x2f) {
-    log_error("Failed to read server marker byte");
+  char *prefix = strpbrk(url, ":");
+  if (!prefix) {
+    log_error("Invalid AAP2 address: '%s'", aap2_url);
+    free(url);
+    exit(1);
+  }
+  *prefix = '\0';
+  prefix += 3;
+
+  if (strcmp(url, "tcp") == 0) {
+    aap2_addr.conn_type = AAP2_INET;
+  } else if (strcmp(url, "unix") == 0) {
+    aap2_addr.conn_type = AAP2_UNIX;
+  } else {
+    log_error("AAP2 address must start with 'tcp://' or 'unix://'");
+    free(url);
     exit(1);
   }
 
-  // Read varint-prefixed AAPMessage
-  uint64_t msg_len;
-  if (recv_varint(socket_fd, &msg_len) < 0) {
-    log_error("Failed to read message length");
-    exit(1);
-  }
-
-  uint8_t *buf = malloc(msg_len);
-  if (recv_exact(socket_fd, buf, msg_len) < 0) {
-    log_error("Failed to read message body");
-    free(buf);
-    exit(1);
-  }
-
-  Aap2__AAPMessage *msg = aap2__aapmessage__unpack(NULL, msg_len, buf);
-  free(buf);
-  if (!msg) {
-    log_error("Failed to unpack AAPMessage");
-    exit(1);
-  }
-  if (msg->msg_case != AAP2__AAPMESSAGE__MSG_WELCOME || !msg->welcome) {
-    log_error("Expected Welcome message, got type %d", msg->msg_case);
-    aap2__aapmessage__free_unpacked(msg, NULL);
-    exit(1);
-  }
-
-  aap2_client *client = malloc(sizeof(aap2_client));
-  client->socket_fd = socket_fd;
-  client->node_id = strdup(msg->welcome->node_id);
-  aap2__aapmessage__free_unpacked(msg, NULL);
-
-  log_info("Connected to AAP2 server, node ID: %s", client->node_id);
-  return client;
-}
-
-int configure_aap2(aap2_client *client, int is_subscriber,
-                   Aap2__AuthType auth_type, const char *secret,
-                   const char *endpoint_id) {
-  Aap2__ConnectionConfig config = AAP2__CONNECTION_CONFIG__INIT;
-  config.is_subscriber = is_subscriber;
-  config.auth_type = auth_type;
-  config.secret = (char *)secret;
-  config.endpoint_id = (char *)endpoint_id;
-
-  Aap2__AAPMessage msg = AAP2__AAPMESSAGE__INIT;
-  msg.msg_case = AAP2__AAPMESSAGE__MSG_CONFIG;
-  msg.config = &config;
-
-  size_t packed_size = aap2__aapmessage__get_packed_size(&msg);
-  uint8_t *buf = malloc(packed_size);
-  aap2__aapmessage__pack(&msg, buf);
-
-  int ret = send_varint(client->socket_fd, packed_size);
-  if (ret == 0) {
-    ssize_t nsent = send(client->socket_fd, buf, packed_size, 0);
-    if (nsent != (ssize_t)packed_size) {
-      log_error("Failed to send config message");
-      ret = -1;
+  if (aap2_addr.conn_type == AAP2_UNIX) {
+    aap2_addr.unix_path = prefix;
+  } else {
+    char *address = strdup(prefix);
+    if (!address) {
+      log_error("OOM");
+      free(url);
+      exit(1);
     }
-  }
-  free(buf);
-  if (ret < 0)
-    return -1;
 
-  // Read the server's AAPResponse to the config
-  Aap2__AAPResponse *resp = recv_aap_response(client->socket_fd);
-  if (!resp) {
-    log_error("Failed to read config response");
+    char *colon = strpbrk(address, ":");
+    if (!colon) {
+      log_error("AAP2 TCP address must be in format tcp://host:port");
+      free(address);
+      free(url);
+      exit(1);
+    }
+    *colon = '\0';
+    aap2_addr.host = address;
+    aap2_addr.port = colon + 1;
+  }
+
+  return aap2_addr;
+}
+
+int create_unix_socket(const char *path) {
+  int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+  if (fd < 0) {
+    log_error("Couldn't initialize unix socket");
+    close(fd);
     return -1;
   }
-  if (resp->response_status != AAP2__RESPONSE_STATUS__RESPONSE_STATUS_SUCCESS) {
-    log_error("Config rejected by server: status=%d", resp->response_status);
-    aap2__aapresponse__free_unpacked(resp, NULL);
+
+  struct sockaddr_un serv_addr;
+  memset(&serv_addr, 0, sizeof(serv_addr));
+  serv_addr.sun_family = AF_UNIX;
+  strncpy(serv_addr.sun_path, path, sizeof(serv_addr.sun_path) - 1);
+
+  uint8_t marker_byte;
+
+  log_info("Connecting to %s", serv_addr.sun_path);
+  if (connect(fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+    log_error("Couldn't connect to unix socket");
+    close(fd);
     return -1;
   }
-  aap2__aapresponse__free_unpacked(resp, NULL);
-  return 0;
+
+  return fd;
+}
+
+int create_tcp_socket(const char *host, const char *port) {
+  int fd = socket(AF_INET, SOCK_STREAM, 0);
+  int rv;
+  if (fd < 0) {
+    log_error("Couldn't initialize ip socket");
+    close(fd);
+    return -1;
+  }
+
+  struct addrinfo hints, *servinfo, *p;
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_family = AF_INET;
+  hints.ai_socktype = SOCK_STREAM;
+  if ((rv = getaddrinfo(host, port, &hints, &servinfo)) != 0) {
+    log_error("Couldn't getaddrinfo : %s", gai_strerror(rv));
+    close(fd);
+    return -1;
+  }
+
+  if (connect(fd, servinfo->ai_addr, servinfo->ai_addrlen) < 0) {
+    log_error("Couldn't connect to ip socket");
+    close(fd);
+    return -1;
+  }
+
+  return fd;
+}
+
+char *receive_welcome_message(int fd) {
+  uint8_t marker_byte;
+  if (recv(fd, &marker_byte, sizeof(marker_byte), 0) < 0) {
+    log_error("Couldn't receive 0x2f bytes indicating aap version");
+    return NULL;
+  }
+
+  if (marker_byte != 0x2f) {
+    log_error("Didn't receive 0x2f");
+    return NULL;
+  }
+
+  uint64_t msg_size;
+  if (recv_varint(fd, &msg_size) < 0) {
+    log_error("Couldn't receive var int");
+    return NULL;
+  }
+  // msg_size++;
+
+  log_info("Received everything %i", msg_size);
+
+  uint8_t *message = malloc(msg_size);
+
+  if (recv(fd, message, msg_size, 0) < 0) {
+    log_error("Couldn't receive EID.");
+    return NULL;
+  }
+
+  Aap2__AAPMessage *aap2_message =
+      aap2__aapmessage__unpack(NULL, msg_size, message);
+  free(message);
+
+  if (aap2_message == NULL) {
+    log_error("Failed to unpack message");
+  }
+
+  printf("%s\n", aap2_message->welcome->node_id);
+
+  return aap2_message->welcome->node_id;
+}
+
+aap2_client *connect_aap2(const char *aap2_url) {
+  aap2info infos = getaap2info(aap2_url);
+
+  int socket_fd;
+
+  if (infos.conn_type == AAP2_UNIX) {
+    socket_fd = create_unix_socket(infos.unix_path);
+  } else {
+    socket_fd = create_tcp_socket(infos.host, infos.port);
+  }
+
+  char *node_eid = receive_welcome_message(socket_fd);
+  log_info(node_eid);
+  if (node_eid == NULL) {
+    exit(1);
+  }
+
+  aap2_client *client = calloc(1, sizeof(aap2_client));
+
+  client->infos = infos;
+  client->node_eid = node_eid;
+  client->socket_fd = socket_fd;
+
+  return client;
 }
 
 int send_aap2(aap2_client *client, const char *dst_eid, const uint8_t *payload,
               size_t payload_len) {
-  Aap2__BundleADU adu = AAP2__BUNDLE_ADU__INIT;
-  adu.dst_eid = (char *)dst_eid;
-  adu.payload_length = payload_len;
-
-  Aap2__AAPMessage msg = AAP2__AAPMESSAGE__INIT;
-  msg.msg_case = AAP2__AAPMESSAGE__MSG_ADU;
-  msg.adu = &adu;
-
-  size_t packed_size = aap2__aapmessage__get_packed_size(&msg);
-  uint8_t *buf = malloc(packed_size);
-  aap2__aapmessage__pack(&msg, buf);
-
-  // Send varint length + protobuf message + raw payload
-  int ret = send_varint(client->socket_fd, packed_size);
-  if (ret == 0) {
-    if (send(client->socket_fd, buf, packed_size, 0) != (ssize_t)packed_size)
-      ret = -1;
-  }
-  free(buf);
-  if (ret == 0) {
-    if (send(client->socket_fd, payload, payload_len, 0) !=
-        (ssize_t)payload_len)
-      ret = -1;
-  }
-  if (ret < 0) {
-    log_error("Failed to send ADU message");
-    return -1;
-  }
-
-  // Read the AAPResponse — server returns bundle headers on success
-  Aap2__AAPResponse *resp = recv_aap_response(client->socket_fd);
-  if (!resp) {
-    log_error("Failed to read ADU response");
-    return -1;
-  }
-  if (resp->response_status != AAP2__RESPONSE_STATUS__RESPONSE_STATUS_SUCCESS) {
-    log_error("ADU rejected by server: status=%d", resp->response_status);
-    aap2__aapresponse__free_unpacked(resp, NULL);
-    return -1;
-  }
-  aap2__aapresponse__free_unpacked(resp, NULL);
-  return 0;
+  return -1;
 }
 
 int close_aap2(aap2_client *client) {
-  if (!client)
-    return -1;
   close(client->socket_fd);
-  free(client->node_id);
-  free(client);
-  return 0;
-}
 
-int listen_aap2(aap2_client *client) {
-  for (;;) {
-    uint64_t msg_len;
-    if (recv_varint(client->socket_fd, &msg_len) < 0) {
-      log_error("Failed to read message length");
-      return -1;
-    }
-
-    uint8_t *buf = malloc(msg_len);
-    if (recv_exact(client->socket_fd, buf, msg_len) < 0) {
-      log_error("Failed to read message body");
-      free(buf);
-      return -1;
-    }
-
-    Aap2__AAPMessage *msg = aap2__aapmessage__unpack(NULL, msg_len, buf);
-    free(buf);
-    if (!msg) {
-      log_error("Failed to unpack AAPMessage");
-      return -1;
-    }
-
-    switch (msg->msg_case) {
-    case AAP2__AAPMESSAGE__MSG_KEEPALIVE:
-      // Must acknowledge every keepalive or the server will drop the connection
-      if (send_aap_response(client->socket_fd,
-                            AAP2__RESPONSE_STATUS__RESPONSE_STATUS_ACK) < 0) {
-        log_error("Failed to send keepalive ACK");
-        aap2__aapmessage__free_unpacked(msg, NULL);
-        return -1;
-      }
-      break;
-
-    case AAP2__AAPMESSAGE__MSG_ADU:
-      if (msg->adu && msg->adu->payload_length > 0) {
-        // Payload bytes follow the protobuf message on the wire
-        uint8_t *payload = malloc(msg->adu->payload_length);
-        if (recv_exact(client->socket_fd, payload, msg->adu->payload_length) <
-            0) {
-          log_error("Failed to read ADU payload");
-          free(payload);
-          aap2__aapmessage__free_unpacked(msg, NULL);
-          return -1;
-        }
-		// must do stuff here
-		log_info("Received ADU for EID %s, payload length %zu",
-		 msg->adu->dst_eid, msg->adu->payload_length);
-        free(payload);
-      }
-      // Acknowledge the ADU
-      if (send_aap_response(client->socket_fd,
-                            AAP2__RESPONSE_STATUS__RESPONSE_STATUS_ACK) < 0) {
-        log_error("Failed to send ADU ACK");
-        aap2__aapmessage__free_unpacked(msg, NULL);
-        return -1;
-      }
-      break;
-
-    default:
-      log_warn("Received unexpected message type %d, ignoring", msg->msg_case);
-      break;
-    }
-
-    aap2__aapmessage__free_unpacked(msg, NULL);
-  }
-  return 0;
+  return 1;
 }

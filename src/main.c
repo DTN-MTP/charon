@@ -1,4 +1,6 @@
+#include "log.h"
 #include "tun.h"
+#include "aap2_client.h"
 #include <string.h>
 
 const char *DEFAULT_CONFIG_FILE = "charon.conf";
@@ -9,5 +11,10 @@ int main() {
     return 1;
  }
 
-  int tunnel_fd = open_tunnel(config);
+  aap2_client* client = connect_aap2(config->aap2_address);
+
+  log_info(client->node_eid);
+
+
+  close_aap2(client);
 }

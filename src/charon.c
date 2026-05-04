@@ -25,7 +25,9 @@ int charon_forward_bundle(charon_tunnel *tunnel, uint8_t *bundle,
   return 0;
 }
 
-int charon_receive_bundle(charon_tunnel *tunnel, uint8_t *buffer, int buffer_size)
+int charon_receive_bundle(charon_tunnel *tunnel, uint8_t *buffer, int buffer_size){
+		return 0;
+}
 
 int charon_close_tunnel(charon_tunnel *tunnel) {
   if (close(*(tunnel->net_interface)) < 0) {

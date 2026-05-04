@@ -8,6 +8,8 @@ services:
       - /app/charon
     volumes:
       - ./confs:/app/confs
+    profiles:
+      - tests
   bob:
     build: .
     container_name: bob
@@ -17,6 +19,37 @@ services:
       - /app/charon
     volumes:
       - ./confs:/app/confs
+    profiles:
+      - tests
+  ud3tn:
+    image: ud3tn:exp
+    environment:
+      AAP2_SECRET: "my_extremely_secret_secret_omg_i_love_this_secretly_secret_secret"
+    ports:
+      - 4224:4224
+      - 4225:4225
+      - 4222:4222
+      - 4556:4556
+    command:
+      - -b
+      - "7"
+      - -c
+      - "sqlite:file::memory:?cache=shared;tcpclv3:*,4556;smtcp:*,4222,false;mtcp:*,4224"
+      - -e
+      - dtn://peer.dtn/
+      - -l
+      - "86400"
+      - -L
+      - "2"
+      - -m
+      - "0"
+      - -P
+      - "4225"
+      - -A
+      - 0.0.0.0
+      - -x
+      - "AAP2_SECRET"
+
 networks:
   charon:
     driver: bridge

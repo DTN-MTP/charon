@@ -9,8 +9,9 @@ static int handler(void *user, const char *section, const char *name,
   charon_config *pconfig = (charon_config *)user;
 
   if (strcmp(section, "bundle") == 0) {
-    if (strcmp(name, "aap2_socket") == 0) {
-      pconfig->aap2_socket = strdup(value);
+    if (strcmp(name, "aap2_address") == 0) {
+      pconfig->aap2_address = strdup(value);
+      log_info(pconfig->aap2_address);
     } else if (strcmp(name, "remote_eid") == 0) {
       pconfig->remote_eid = strdup(value);
     } else if (strcmp(name, "secret_name") == 0) {

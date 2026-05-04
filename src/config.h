@@ -1,4 +1,5 @@
 typedef struct {
+  char *aap2_address;
   char *aap2_socket;
   char *remote_eid;
   char *address;
