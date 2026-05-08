@@ -148,7 +148,7 @@ int create_tcp_socket(const char *host, const char *port) {
 
 char *receive_welcome_message(int fd) {
   uint8_t marker_byte;
-  if (recv(fd, &marker_byte, sizeof(marker_byte), 0) < 0) {
+  if (recv_exact(fd, &marker_byte, sizeof(marker_byte)) < 0) {
     log_error("Couldn't receive 0x2f bytes indicating aap version");
     return NULL;
   }
@@ -169,7 +169,7 @@ char *receive_welcome_message(int fd) {
 
   uint8_t *message = malloc(msg_size);
 
-  if (recv(fd, message, msg_size, 0) < 0) {
+  if (recv_exact(fd, message, msg_size) < 0) {
     log_error("Couldn't receive EID.");
     return NULL;
   }
