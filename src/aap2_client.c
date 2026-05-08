@@ -1,4 +1,5 @@
 #include "aap2_client.h"
+#include <stdlib.h>
 #include "log.h"
 #include "proto/aap2.pb-c.h"
 #include <net/if.h>
@@ -16,13 +17,20 @@ int recv_exact(int fd, void *buf, size_t len) {
     ssize_t n = recv(fd, (uint8_t *)buf + total, len - total, 0);
     if (n <= 0)
       return -1;
-    for (size_t i = 0; i < (size_t)n; i++) {
-      printf("%02x ", ((uint8_t *)buf)[total + i]);
-    }
-    printf("\n");
     total += n;
   }
 
+  return 0;
+}
+
+int send_exact(int fd, void *buf, size_t len) {
+  size_t total = 0;
+  while (total < len) {
+    ssize_t n = send(fd, (uint8_t *)buf + total, len - total, 0);
+    if (n <= 0)
+      return -1;
+    total += n;
+  }
   return 0;
 }
 
@@ -182,12 +190,10 @@ char *receive_welcome_message(int fd) {
     log_error("Failed to unpack message");
   }
 
-  printf("%s\n", aap2_message->welcome->node_id);
-
   return aap2_message->welcome->node_id;
 }
 
-aap2_client *connect_aap2(const char *aap2_url) {
+aap2_client *connect_aap2(const char *aap2_url, const char* secret_name) {
   aap2info infos = getaap2info(aap2_url);
 
   int socket_fd;
@@ -199,18 +205,52 @@ aap2_client *connect_aap2(const char *aap2_url) {
   }
 
   char *node_eid = receive_welcome_message(socket_fd);
-  log_info(node_eid);
+
   if (node_eid == NULL) {
     exit(1);
   }
 
   aap2_client *client = calloc(1, sizeof(aap2_client));
+  char* secret = getenv(secret_name);
+  if(secret == NULL) {
+		  log_error("Couldn't retrieve AAP2 secret at this env variable : %s", secret_name);
+		  exit(1);
+  }
+  log_info(secret);
 
   client->infos = infos;
   client->node_eid = node_eid;
   client->socket_fd = socket_fd;
+  client->secret = secret;
 
   return client;
+}
+
+// https://protobuf-c.github.io/protobuf-c/pack.html
+int configure_aap2(aap2_client *client, int is_subscriber,
+                   Aap2__AuthType auth_type, const char *secret,
+                   const char *endpoint_id) {
+  Aap2__ConnectionConfig config_message;
+  config_message.endpoint_id = client->node_eid;
+  config_message.auth_type = AAP2__AUTH_TYPE__AUTH_TYPE_DEFAULT;
+  config_message.is_subscriber = is_subscriber;
+  config_message.secret = client->secret;
+  config_message.keepalive_seconds = 0;
+  aap2__connection_config__init(&config_message);
+  size_t packed_size =
+      aap2__connection_config__get_packed_size(&config_message);
+  uint8_t *buf = malloc(packed_size);
+  aap2__connection_config__pack(&config_message, buf);
+
+  if (send_exact(client->socket_fd, &buf, packed_size) < 0) {
+    log_error("Couldn't send configuration");
+    return -1;
+  }
+
+  log_info("Configuration sent !");
+  free(buf);
+
+  return 0;
 }
 
 int send_aap2(aap2_client *client, const char *dst_eid, const uint8_t *payload,

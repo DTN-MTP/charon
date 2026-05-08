@@ -17,13 +17,14 @@ typedef struct {
   int socket_fd;
   char *node_eid;
   aap2info infos;
+  char* secret;
 } aap2_client;
 
 
 typedef void (*aap2_message_handler)(
     Aap2__AAPMessage); // define handler for aap2 message
 
-aap2_client* connect_aap2(const char *path);
+aap2_client* connect_aap2(const char *path, const char *secret_name);
 int configure_aap2(aap2_client *client, int is_subscriber,
                    Aap2__AuthType auth_type, const char *secret,
                    const char *endpoint_id);
