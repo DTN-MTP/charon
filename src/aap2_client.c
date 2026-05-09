@@ -1,10 +1,10 @@
 #include "aap2_client.h"
-#include <stdlib.h>
 #include "log.h"
 #include "proto/aap2.pb-c.h"
 #include <net/if.h>
 #include <netdb.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -193,7 +193,7 @@ char *receive_welcome_message(int fd) {
   return aap2_message->welcome->node_id;
 }
 
-aap2_client *connect_aap2(const char *aap2_url, const char* secret_name) {
+aap2_client *connect_aap2(const char *aap2_url, const char *secret_name) {
   aap2info infos = getaap2info(aap2_url);
 
   int socket_fd;
@@ -211,10 +211,11 @@ aap2_client *connect_aap2(const char *aap2_url, const char* secret_name) {
   }
 
   aap2_client *client = calloc(1, sizeof(aap2_client));
-  char* secret = getenv(secret_name);
-  if(secret == NULL) {
-		  log_error("Couldn't retrieve AAP2 secret at this env variable : %s", secret_name);
-		  exit(1);
+  char *secret = getenv(secret_name);
+  if (secret == NULL) {
+    log_error("Couldn't retrieve AAP2 secret at this env variable : %s",
+              secret_name);
+    exit(1);
   }
   log_info(secret);
 
@@ -231,16 +232,18 @@ int configure_aap2(aap2_client *client, int is_subscriber,
                    Aap2__AuthType auth_type, const char *secret,
                    const char *endpoint_id) {
   Aap2__ConnectionConfig config_message;
+  aap2__connection_config__init(&config_message);
   config_message.endpoint_id = client->node_eid;
   config_message.auth_type = AAP2__AUTH_TYPE__AUTH_TYPE_DEFAULT;
   config_message.is_subscriber = is_subscriber;
   config_message.secret = client->secret;
-  config_message.keepalive_seconds = 0;
-  aap2__connection_config__init(&config_message);
+  config_message.keepalive_seconds = 1;
   size_t packed_size =
       aap2__connection_config__get_packed_size(&config_message);
   uint8_t *buf = malloc(packed_size);
   aap2__connection_config__pack(&config_message, buf);
+
+  log_info("EID : %s", config_message.endpoint_id);
 
   if (send_exact(client->socket_fd, &buf, packed_size) < 0) {
     log_error("Couldn't send configuration");
@@ -249,6 +252,39 @@ int configure_aap2(aap2_client *client, int is_subscriber,
 
   log_info("Configuration sent !");
   free(buf);
+
+  uint8_t marker_byte;
+  if (recv_exact(client->socket_fd, &marker_byte, sizeof(marker_byte)) < 0) {
+    log_error("Couldn't receive 0x2f bytes indicating aap version");
+    return -1;
+  }
+
+  if (marker_byte != 0x2f) {
+    log_error("Didn't receive 0x2f");
+    return -1;
+  }
+
+  uint64_t msg_size;
+  if (recv_varint(client->socket_fd, &msg_size) < 0) {
+    log_error("Couldn't receive var int");
+    return -1;
+  }
+  // msg_size++;
+
+  log_info("Received everything %i", msg_size);
+
+  uint8_t *message = malloc(msg_size);
+
+  if (recv_exact(client->socket_fd, message, msg_size) < 0) {
+    log_error("Couldn't receive EID.");
+    return -1;
+  }
+
+  Aap2__AAPResponse *aap2_response =
+      aap2__aapresponse__unpack(NULL, msg_size, message);
+
+  log_info("Response status : %i", aap2_response->response_status);
+  free(message);
 
   return 0;
 }
