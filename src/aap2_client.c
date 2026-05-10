@@ -47,6 +47,22 @@ int recv_varint(int fd, uint64_t *out) {
   return -1;
 }
 
+int send_varint(int fd, uint64_t value) {
+  uint8_t buf[10];
+  int i = 0;
+  
+  do {
+    buf[i++] = (uint8_t)(value & 0x7F);
+    value >>= 7;
+  } while (value != 0);
+  
+  for (int j = 0; j < i - 1; j++) {
+    buf[j] |= 0x80;
+  }
+  
+  return send_exact(fd, buf, i);
+}
+
 aap2info getaap2info(const char *aap2_url) {
   aap2info aap2_addr;
   memset(&aap2_addr, 0, sizeof(aap2_addr));
@@ -237,32 +253,34 @@ int configure_aap2(aap2_client *client, int is_subscriber,
   config_message.auth_type = AAP2__AUTH_TYPE__AUTH_TYPE_DEFAULT;
   config_message.is_subscriber = is_subscriber;
   config_message.secret = client->secret;
-  config_message.keepalive_seconds = 1;
+  config_message.keepalive_seconds = 0;
+
+  Aap2__AAPMessage wrapper;
+  aap2__aapmessage__init(&wrapper);
+  wrapper.msg_case = AAP2__AAPMESSAGE__MSG_CONFIG;
+  wrapper.config = &config_message;
+
   size_t packed_size =
-      aap2__connection_config__get_packed_size(&config_message);
+      aap2__aapmessage__get_packed_size(&wrapper);
   uint8_t *buf = malloc(packed_size);
-  aap2__connection_config__pack(&config_message, buf);
+  aap2__aapmessage__pack(&wrapper, buf);
 
   log_info("EID : %s", config_message.endpoint_id);
+  log_info("secret : %s", config_message.secret);
 
-  if (send_exact(client->socket_fd, &buf, packed_size) < 0) {
+
+  if(send_varint(client->socket_fd, packed_size) < 0) {
+    log_error("Couldn't send varint");
+    return -1;
+  }
+
+  if (send_exact(client->socket_fd, buf, packed_size) < 0) {
     log_error("Couldn't send configuration");
     return -1;
   }
 
   log_info("Configuration sent !");
   free(buf);
-
-  uint8_t marker_byte;
-  if (recv_exact(client->socket_fd, &marker_byte, sizeof(marker_byte)) < 0) {
-    log_error("Couldn't receive 0x2f bytes indicating aap version");
-    return -1;
-  }
-
-  if (marker_byte != 0x2f) {
-    log_error("Didn't receive 0x2f");
-    return -1;
-  }
 
   uint64_t msg_size;
   if (recv_varint(client->socket_fd, &msg_size) < 0) {
@@ -283,7 +301,8 @@ int configure_aap2(aap2_client *client, int is_subscriber,
   Aap2__AAPResponse *aap2_response =
       aap2__aapresponse__unpack(NULL, msg_size, message);
 
-  log_info("Response status : %i", aap2_response->response_status);
+  log_info("%i", aap2_response->response_status);
+
   free(message);
 
   return 0;

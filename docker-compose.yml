@@ -1,3 +1,9 @@
+x-healthcheck-defaults: &healthcheck-defaults
+  interval: 5s
+  timeout: 5s
+  retries: 10
+  start_period: 5s
+
 services:
   alice:
     build: .
@@ -21,22 +27,28 @@ services:
       - ./confs:/app/confs
     profiles:
       - tests
-  ud3tn:
-    image: ud3tn:exp
+  alice-ud3tn:
+    image: ud3tn:exp-debug
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp:unconfined
+    networks:
+      - charon
+    ports:
+      - 4225:4225
     environment:
       AAP2_SECRET: "my_extremely_secret_secret_omg_i_love_this_secretly_secret_secret"
-    ports:
-      - 4224:4224
-      - 4225:4225
-      - 4222:4222
-      - 4556:4556
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "nc -w 1 -z 127.0.0.1 4225 || exit 1"]
     command:
       - -b
       - "7"
       - -c
       - "sqlite:file::memory:?cache=shared;tcpclv3:*,4556;smtcp:*,4222,false;mtcp:*,4224"
       - -e
-      - dtn://peer.dtn/
+      - dtn://alice.dtn/
       - -l
       - "86400"
       - -L
@@ -49,6 +61,76 @@ services:
       - 0.0.0.0
       - -x
       - "AAP2_SECRET"
+  bob-ud3tn:
+    image: ud3tn:exp-debug
+    networks:
+      - charon
+    environment:
+      AAP2_SECRET: "my_extremely_secret_secret_omg_i_love_this_secretly_secret_secret"
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD-SHELL", "nc -w 1 -z 127.0.0.1 4224 || exit 1"]
+    command:
+      - -b
+      - "7"
+      - -c
+      - "sqlite:file::memory:?cache=shared;tcpclv3:*,4556;smtcp:*,4222,false;mtcp:*,4224"
+      - -e
+      - dtn://bob.dtn/
+      - -l
+      - "86400"
+      - -L
+      - "2"
+      - -m
+      - "0"
+      - -P
+      - "4225"
+      - -A
+      - 0.0.0.0
+      - -x
+      - "AAP2_SECRET"
+  ud3tn-config:
+    image: ud3tn-python:exp
+    networks:
+      - charon
+    environment:
+      AAP2_SECRET: "my_extremely_secret_secret_omg_i_love_this_secretly_secret_secret"
+    command:
+      - /usr/local/bin/aap2-config
+      - --tcp
+      - alice-ud3tn
+      - "4225"
+      - --secret-var
+      - AAP2_SECRET
+      - --schedule
+      - "1"
+      - "3600"
+      - "100000"
+      - dtn://bob.dtn/
+      - "mtcp:bob-ud3tn:4224"
+    depends_on:
+      alice-ud3tn:
+        condition: service_healthy
+      bob-ud3tn:
+        condition: service_healthy
+  bob-sink:
+    image: ud3tn-python:exp
+    networks:
+      - charon
+    environment:
+      AAP2_SECRET: "my_extremely_secret_secret_omg_i_love_this_secretly_secret_secret"
+    command:
+      - /usr/local/bin/aap2-receive
+      - --tcp
+      - bob-ud3tn
+      - "4225"
+      - --secret-var
+      - AAP2_SECRET
+      - --agentid
+      - bundlesink
+    depends_on:
+      ud3tn-config:
+        condition: service_completed_successfully
 
 networks:
   charon:

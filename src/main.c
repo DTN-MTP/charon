@@ -13,7 +13,7 @@ int main() {
 
   aap2_client* client = connect_aap2(config->aap2_address, config->secret_name);
 
-  configure_aap2(client, 0, 0, "", "");
+  configure_aap2(client, 1, 0, "", "");
 
   log_info(client->node_eid);
 

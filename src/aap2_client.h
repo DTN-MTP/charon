@@ -33,3 +33,6 @@ int send_aap2(aap2_client *client, const char *dst_eid, const uint8_t *payload,
               size_t payload_len);
 int close_aap2(aap2_client *client);
 int listen_aap2(aap2_client *client, aap2_message_handler);
+
+int recv_varint(int fd, uint64_t *out);
+int send_varint(int fd, uint64_t value);
