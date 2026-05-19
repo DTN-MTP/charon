@@ -15,6 +15,8 @@ int main() {
 
   configure_aap2(client, 0, 0, "", config->remote_eid);
 
+  send_aap2(client, config->remote_eid, "Hello world and everyone from anywhere", strlen("Hello world and everyone from anywhere") * sizeof(char));
+
   log_info(client->node_eid);
 
   close_aap2(client);

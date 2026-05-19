@@ -250,15 +250,15 @@ int configure_aap2(aap2_client *client, int is_subscriber,
   Aap2__ConnectionConfig config_message;
   aap2__connection_config__init(&config_message);
   // TODO: replace that with parameterd or random agent id
-  char* agent_id = "charon";
+  char *agent_id = "charon";
 
-  char* eid = malloc((strlen(agent_id) + strlen(client->node_eid)) * sizeof(char));
+  char *eid =
+      malloc((strlen(agent_id) + strlen(client->node_eid)) * sizeof(char));
 
-  if(sprintf(eid,"%s%s", client->node_eid, agent_id) < 0) {
-		  log_error("Couldn't build EID and agent ID");
-		  return -1;
+  if (sprintf(eid, "%s%s", client->node_eid, agent_id) < 0) {
+    log_error("Couldn't build EID and agent ID");
+    return -1;
   }
-
 
   config_message.endpoint_id = eid;
   config_message.auth_type = AAP2__AUTH_TYPE__AUTH_TYPE_DEFAULT;
@@ -271,16 +271,14 @@ int configure_aap2(aap2_client *client, int is_subscriber,
   wrapper.msg_case = AAP2__AAPMESSAGE__MSG_CONFIG;
   wrapper.config = &config_message;
 
-  size_t packed_size =
-      aap2__aapmessage__get_packed_size(&wrapper);
+  size_t packed_size = aap2__aapmessage__get_packed_size(&wrapper);
   uint8_t *buf = malloc(packed_size);
   aap2__aapmessage__pack(&wrapper, buf);
 
   log_info("EID : %s", config_message.endpoint_id);
   log_info("secret : %s", config_message.secret);
 
-
-  if(send_varint(client->socket_fd, packed_size) < 0) {
+  if (send_varint(client->socket_fd, packed_size) < 0) {
     log_error("Couldn't send varint");
     return -1;
   }
@@ -318,64 +316,108 @@ int configure_aap2(aap2_client *client, int is_subscriber,
   return 0;
 }
 
-int handle_aap2_response(uint8_t* message, uint64_t msg_size) {
+int handle_aap2_response(uint8_t *message, uint64_t msg_size) {
 
-		  Aap2__AAPResponse *aap2_response =
-			  aap2__aapresponse__unpack(NULL, msg_size, message);
+  Aap2__AAPResponse *aap2_response =
+      aap2__aapresponse__unpack(NULL, msg_size, message);
 
-		  log_info("%i", aap2_response->response_status);
+  log_info("%i", aap2_response->response_status);
 
-		switch (aap2_response->response_status) {
-		 case AAP2__RESPONSE_STATUS__RESPONSE_STATUS_UNSPECIFIED:
-				 log_error("Unspecified response status");
-				 aap2__aapresponse__free_unpacked(aap2_response, NULL);
-				 free(message);
-				 return -1;
-		case AAP2__RESPONSE_STATUS__RESPONSE_STATUS_SUCCESS:
-				 log_debug("Success");
-				 aap2__aapresponse__free_unpacked(aap2_response, NULL);
-				 free(message);
-				 return 0;
-		case AAP2__RESPONSE_STATUS__RESPONSE_STATUS_ACK:
-				 log_debug("Acknowledgment received");
-				 aap2__aapresponse__free_unpacked(aap2_response, NULL);
-				 free(message);
-				 return 0;
-		case AAP2__RESPONSE_STATUS__RESPONSE_STATUS_ERROR:
-				 log_error("Generic error occurred");
-				 aap2__aapresponse__free_unpacked(aap2_response, NULL);
-				 free(message);
-				 return -1;
-		case AAP2__RESPONSE_STATUS__RESPONSE_STATUS_TIMEOUT:
-				 log_error("Timeout occurred");
-				 aap2__aapresponse__free_unpacked(aap2_response, NULL);
-				 free(message);
-				 return -1;
-		case AAP2__RESPONSE_STATUS__RESPONSE_STATUS_INVALID_REQUEST:
-				 log_error("Invalid request");
-				 aap2__aapresponse__free_unpacked(aap2_response, NULL);
-				 free(message);
-				 return -1;
-		case AAP2__RESPONSE_STATUS__RESPONSE_STATUS_NOT_FOUND:
-				 log_error("Resource not found");
-				 aap2__aapresponse__free_unpacked(aap2_response, NULL);
-				 free(message);
-				 return -1;
-		case AAP2__RESPONSE_STATUS__RESPONSE_STATUS_UNAUTHORIZED:
-				 log_error("Unauthorized");
-				 aap2__aapresponse__free_unpacked(aap2_response, NULL);
-				 free(message);
-				 return -1;
-		default:
-				 log_error("Unknown response status: %d", aap2_response->response_status);
-				 aap2__aapresponse__free_unpacked(aap2_response, NULL);
-				 free(message);
-				 return -1;
-		}
+  switch (aap2_response->response_status) {
+  case AAP2__RESPONSE_STATUS__RESPONSE_STATUS_UNSPECIFIED:
+    log_error("Unspecified response status");
+    aap2__aapresponse__free_unpacked(aap2_response, NULL);
+    free(message);
+    return -1;
+  case AAP2__RESPONSE_STATUS__RESPONSE_STATUS_SUCCESS:
+    log_debug("Success");
+    aap2__aapresponse__free_unpacked(aap2_response, NULL);
+    free(message);
+    return 0;
+  case AAP2__RESPONSE_STATUS__RESPONSE_STATUS_ACK:
+    log_debug("Acknowledgment received");
+    aap2__aapresponse__free_unpacked(aap2_response, NULL);
+    free(message);
+    return 0;
+  case AAP2__RESPONSE_STATUS__RESPONSE_STATUS_ERROR:
+    log_error("Generic error occurred");
+    aap2__aapresponse__free_unpacked(aap2_response, NULL);
+    free(message);
+    return -1;
+  case AAP2__RESPONSE_STATUS__RESPONSE_STATUS_TIMEOUT:
+    log_error("Timeout occurred");
+    aap2__aapresponse__free_unpacked(aap2_response, NULL);
+    free(message);
+    return -1;
+  case AAP2__RESPONSE_STATUS__RESPONSE_STATUS_INVALID_REQUEST:
+    log_error("Invalid request");
+    aap2__aapresponse__free_unpacked(aap2_response, NULL);
+    free(message);
+    return -1;
+  case AAP2__RESPONSE_STATUS__RESPONSE_STATUS_NOT_FOUND:
+    log_error("Resource not found");
+    aap2__aapresponse__free_unpacked(aap2_response, NULL);
+    free(message);
+    return -1;
+  case AAP2__RESPONSE_STATUS__RESPONSE_STATUS_UNAUTHORIZED:
+    log_error("Unauthorized");
+    aap2__aapresponse__free_unpacked(aap2_response, NULL);
+    free(message);
+    return -1;
+  default:
+    log_error("Unknown response status: %d", aap2_response->response_status);
+    aap2__aapresponse__free_unpacked(aap2_response, NULL);
+    free(message);
+    return -1;
+  }
 }
 
 int send_aap2(aap2_client *client, const char *dst_eid, const uint8_t *payload,
               size_t payload_len) {
+  Aap2__BundleADU bundle_adu;
+  aap2__bundle_adu__init(&bundle_adu);
+
+  char *agent_id = "charon";
+
+  char *eid =
+      malloc((strlen(agent_id) + strlen(client->node_eid)) * sizeof(char));
+
+  if (sprintf(eid, "%s%s", client->node_eid, agent_id) < 0) {
+    log_error("Couldn't build EID and agent ID");
+    return -1;
+  }
+
+  bundle_adu.dst_eid = dst_eid;
+  bundle_adu.src_eid = eid;
+  bundle_adu.payload_length = payload_len;
+
+  Aap2__AAPMessage wrapper;
+  aap2__aapmessage__init(&wrapper);
+  wrapper.msg_case = AAP2__AAPMESSAGE__MSG_ADU;
+  wrapper.adu = &bundle_adu;
+
+  size_t packed_size = aap2__aapmessage__get_packed_size(&wrapper);
+  uint8_t *buf = malloc(packed_size);
+  aap2__aapmessage__pack(&wrapper, buf);
+
+  if (send_varint(client->socket_fd, packed_size) < 0) {
+    log_error("Couldn't send varint");
+    return -1;
+  }
+
+  if (send_exact(client->socket_fd, buf, packed_size) < 0) {
+    log_error("Couldn't send configuration");
+    return -1;
+  }
+
+  if (send_exact(client->socket_fd, payload, payload_len) < 0) {
+    log_error("Couldn't send configuration");
+    return -1;
+  }
+
+  log_info("Configuration sent !");
+  free(buf);
+
   return -1;
 }
 
