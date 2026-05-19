@@ -2,7 +2,7 @@ x-healthcheck-defaults: &healthcheck-defaults
   interval: 5s
   timeout: 5s
   retries: 10
-  start_period: 5s
+  start_period: 1s
 
 services:
   alice:
@@ -39,20 +39,18 @@ services:
       - 4225:4225
     environment:
       AAP2_SECRET: "my_extremely_secret_secret_omg_i_love_this_secretly_secret_secret"
-    healthcheck:
-      <<: *healthcheck-defaults
-      test: ["CMD-SHELL", "nc -w 1 -z 127.0.0.1 4225 || exit 1"]
     command:
+      - --allow-remote-config
       - -b
       - "7"
       - -c
-      - "sqlite:file::memory:?cache=shared;tcpclv3:*,4556;smtcp:*,4222,false;mtcp:*,4224"
+      - "mtcp:*,4224"
       - -e
       - dtn://alice.dtn/
       - -l
       - "86400"
       - -L
-      - "2"
+      - "4"
       - -m
       - "0"
       - -P
@@ -61,26 +59,30 @@ services:
       - 0.0.0.0
       - -x
       - "AAP2_SECRET"
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep ud3tn > /dev/null || exit 1"]
+      interval: 1s
+      timeout: 5s
+      retries: 1
+      start_period: 1s
   bob-ud3tn:
     image: ud3tn:exp-debug
     networks:
       - charon
     environment:
       AAP2_SECRET: "my_extremely_secret_secret_omg_i_love_this_secretly_secret_secret"
-    healthcheck:
-      <<: *healthcheck-defaults
-      test: ["CMD-SHELL", "nc -w 1 -z 127.0.0.1 4224 || exit 1"]
     command:
+      - --allow-remote-config
       - -b
       - "7"
       - -c
-      - "sqlite:file::memory:?cache=shared;tcpclv3:*,4556;smtcp:*,4222,false;mtcp:*,4224"
+      - "mtcp:*,4224"
       - -e
       - dtn://bob.dtn/
       - -l
       - "86400"
       - -L
-      - "2"
+      - "4"
       - -m
       - "0"
       - -P
@@ -89,6 +91,12 @@ services:
       - 0.0.0.0
       - -x
       - "AAP2_SECRET"
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep ud3tn > /dev/null || exit 1"]
+      interval: 1s
+      timeout: 5s
+      retries: 1
+      start_period: 1s
   ud3tn-config:
     image: ud3tn-python:exp
     networks:
@@ -104,7 +112,7 @@ services:
       - AAP2_SECRET
       - --schedule
       - "1"
-      - "3600"
+      - "3600000"
       - "100000"
       - dtn://bob.dtn/
       - "mtcp:bob-ud3tn:4224"

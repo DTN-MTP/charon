@@ -27,7 +27,7 @@ typedef void (*aap2_message_handler)(
 aap2_client* connect_aap2(const char *path, const char *secret_name);
 int configure_aap2(aap2_client *client, int is_subscriber,
                    Aap2__AuthType auth_type, const char *secret,
-                   const char *endpoint_id);
+                   char *endpoint_id);
 
 int send_aap2(aap2_client *client, const char *dst_eid, const uint8_t *payload,
               size_t payload_len);
