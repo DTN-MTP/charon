@@ -3,7 +3,7 @@ CFLAGS  = -Wall -Wextra -g -O2 \
 	-Isrc \
 	-DLOG_USE_COLOR \
 	-g
-LDFLAGS = -lprotobuf-c
+LDFLAGS = -lprotobuf-c -lpthread
 
 SRC = src/*.c \
 	  src/proto/*.c

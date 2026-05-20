@@ -1,12 +1,15 @@
 #include "aap2_client.h"
 #include "log.h"
 #include "proto/aap2.pb-c.h"
+#include <errno.h>
+#include <fcntl.h>
 #include <net/if.h>
 #include <netdb.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/select.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -187,9 +190,6 @@ char *receive_welcome_message(int fd) {
     log_error("Couldn't receive var int");
     return NULL;
   }
-  // msg_size++;
-
-  log_info("Received everything %i", msg_size);
 
   uint8_t *message = malloc(msg_size);
 
@@ -204,6 +204,7 @@ char *receive_welcome_message(int fd) {
 
   if (aap2_message == NULL) {
     log_error("Failed to unpack message");
+    return NULL;
   }
 
   return aap2_message->welcome->node_id;
@@ -419,6 +420,99 @@ int send_aap2(aap2_client *client, const char *dst_eid, const uint8_t *payload,
   free(buf);
 
   return -1;
+}
+
+int send_response_status(aap2_client *client) {
+  Aap2__AAPResponse aap_response;
+  aap2__aapresponse__init(&aap_response);
+
+  aap_response.response_status = AAP2__RESPONSE_STATUS__RESPONSE_STATUS_SUCCESS;
+  size_t packed_size = aap2__aapresponse__get_packed_size(&aap_response);
+
+  uint8_t *buf = malloc(packed_size);
+
+  aap2__aapresponse__pack(&aap_response, buf);
+
+  if (send_varint(client->socket_fd, packed_size) < 0) {
+    log_error("Couldn't send varint");
+    return -1;
+  }
+
+  if (send_exact(client->socket_fd, buf, packed_size) < 0) {
+    log_error("Couldn't send bundle response");
+    return -1;
+  }
+
+  log_info("Bundle response sent !");
+  free(buf);
+
+  return 0;
+}
+
+int recv_one_adu(aap2_answer *answer, int fd, aap2_client *client) {
+  uint64_t msg_size;
+  if (recv_varint(fd, &msg_size) < 0) {
+    log_error("Couldn't receive var int");
+    return -1;
+  }
+  uint8_t *message = malloc(msg_size);
+
+  if (recv_exact(fd, message, msg_size) < 0) {
+    log_error("Couldn't receive bundle : %s", strerror(errno));
+
+    return -1;
+  }
+
+  Aap2__AAPMessage *aap2_message =
+      aap2__aapmessage__unpack(NULL, msg_size, message);
+
+  free(message);
+
+  if (aap2_message == NULL) {
+    log_error("Failed to unpack message");
+    return -1;
+  }
+
+  uint64_t bundle_size = aap2_message->adu->payload_length;
+  char *bundle = calloc(bundle_size, sizeof(char));
+  if (recv_exact(fd, bundle, bundle_size) < 0) {
+    log_error("Coudln't receive bundle");
+    return -1;
+  }
+
+  send_response_status(client);
+
+  answer->payload = bundle;
+  answer->message = aap2_message;
+
+  return 0;
+}
+
+int recv_aap2(aap2_client *client, aap2_message_handler handler, int tun_fd) {
+  fd_set read_fds;
+  int fd = client->socket_fd;
+  struct timeval tv;
+  tv.tv_usec = 5000;
+
+  while (1) {
+    FD_ZERO(&read_fds);
+    FD_SET(fd, &read_fds);
+    if (select(fd + 1, &read_fds, NULL, NULL, &tv) < 0) {
+      if (errno == EINTR)
+        continue;
+      log_error("select() failed : %s", strerror(errno));
+      return -1;
+    }
+
+    if (FD_ISSET(fd, &read_fds)) {
+      aap2_answer answer;
+      int res = recv_one_adu(&answer, fd, client);
+      if (res < 0) {
+        return -1;
+      }
+      handler(&answer, tun_fd);
+    }
+  }
 }
 
 int close_aap2(aap2_client *client) {

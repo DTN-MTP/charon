@@ -3,6 +3,7 @@
 #include <bits/types/struct_timeval.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <string.h>
 #include <sys/select.h>
 #include <unistd.h>
@@ -23,15 +24,7 @@ int charon_forward_packet(charon_tunnel *tunnel, const charon_config *config,
 
 // send bundle to ifnet interface dtn -> ifnet
 int charon_forward_bundle(charon_tunnel *tunnel, uint8_t *bundle,
-                          int bundle_size) {
-  if (write((tunnel->net_interface), bundle, bundle_size) <
-      0) { // might need to replace write() with a more specific function
-           // depending on the type of network interface
-    log_error("Failed to write to network interface");
-    return -1;
-  }
-  return 0;
-}
+                          int bundle_size) {}
 
 int charon_receive_bundle(charon_tunnel *tunnel, uint8_t *buffer,
                           int buffer_size) {
@@ -60,21 +53,34 @@ int charon_init(charon_tunnel *tunnel, charon_config *config) {
     return -1;
   }
 
+  aap2_client *rx = connect_aap2(config->aap2_address, config->secret_name);
+  if (configure_aap2(rx, 1, 0, config->secret_name, config->remote_eid) < 0) {
+    return -1;
+  }
+
   int tun_fd = open_tunnel(config);
 
   tunnel->dtn_tx_interface = tx;
+  tunnel->dtn_rx_interface = rx;
   tunnel->net_interface = tun_fd;
 
   return 0;
 }
 
-int charon_run_tunnel(charon_tunnel *tunnel, charon_config *config) {
+typedef struct {
+  charon_tunnel *tunnel;
+  charon_config *config;
+} listen_tun_args;
+
+void *_charon_listen_tun(void *arg) {
+  listen_tun_args *args = (listen_tun_args *)arg;
+  charon_tunnel *tunnel = args->tunnel;
+  charon_config *config = args->config;
   uint8_t tun_buf[BUF_SIZE];
   fd_set read_fds;
   int tun_fd = tunnel->net_interface;
-  log_info("%i\n", tun_fd);
   struct timeval tv;
-  tv.tv_sec = 2;
+  tv.tv_usec = 5000;
 
   // Set non-blocking mode
   int flags = fcntl(tun_fd, F_GETFL, 0);
@@ -90,7 +96,7 @@ int charon_run_tunnel(charon_tunnel *tunnel, charon_config *config) {
       if (errno == EINTR)
         continue; // Interrupted by signal
       log_error("select() failed: %s", strerror(errno));
-      return -1;
+      return NULL;
     }
 
     if (FD_ISSET(tun_fd, &read_fds)) {
@@ -102,9 +108,46 @@ int charon_run_tunnel(charon_tunnel *tunnel, charon_config *config) {
           continue; // No data, retry
         }
         log_error("read() failed: %s", strerror(errno));
-        return -1;
+        return NULL;
       }
       charon_forward_packet(tunnel, config, tun_buf, nread);
     }
   }
+}
+
+void message_handler(aap2_answer *answer, int fd) {
+  log_info(answer->payload);
+  // if (write(fd, answer->payload, answer->message->adu->payload_length) <
+  //     0) { // might need to replace write() with a more specific function
+  //          // depending on the type of network interface
+  //   log_error("Failed to write to network interface");
+  // }
+}
+
+void *_charon_listen_aap2(void *arg) {
+  listen_tun_args *args = (listen_tun_args *)arg;
+  charon_tunnel *tunnel = args->tunnel;
+  charon_config *config = args->config;
+  recv_aap2(tunnel->dtn_rx_interface, message_handler, tunnel->net_interface);
+  return NULL;
+}
+
+int charon_run_tunnel(charon_tunnel *tunnel, charon_config *config) {
+  pthread_t thread1, thread2;
+
+  // Prepare arguments for loop1
+  listen_tun_args args = {
+      .tunnel = tunnel,
+      .config = config,
+  };
+
+  // Create threads
+  pthread_create(&thread1, NULL, _charon_listen_aap2, (void *)&args);
+  pthread_create(&thread2, NULL, _charon_listen_tun, (void *)&args);
+
+  // Wait for threads
+  pthread_join(thread1, NULL);
+  pthread_join(thread2, NULL);
+
+  return 0;
 }

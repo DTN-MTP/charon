@@ -8,25 +8,42 @@ services:
   alice:
     build: .
     container_name: alice
+    environment:
+      AAP2_SECRET: "my_extremely_secret_secret_omg_i_love_this_secretly_secret_secret"
     networks:
       - charon
-    entrypoint:
+    command:
       - /app/charon
+      - /app/conf/charon.conf
     volumes:
-      - ./confs:/app/confs
+      - ./alice/:/app/conf/
     profiles:
       - tests
+    depends_on:
+      ud3tn-config-rx:
+        condition: service_completed_successfully
+      ud3tn-config:
+        condition: service_completed_successfully
   bob:
     build: .
     container_name: bob
+    environment:
+      AAP2_SECRET: "my_extremely_secret_secret_omg_i_love_this_secretly_secret_secret"
     networks:
       - charon
-    entrypoint:
+    command:
       - /app/charon
+      - /app/conf/charon.conf
     volumes:
-      - ./confs:/app/confs
+      - ./bob:/app/conf/
     profiles:
       - tests
+    depends_on:
+      ud3tn-config-rx:
+        condition: service_completed_successfully
+      ud3tn-config:
+        condition: service_completed_successfully
+
   alice-ud3tn:
     image: ud3tn:exp-debug
     cap_add:
@@ -121,25 +138,30 @@ services:
         condition: service_healthy
       bob-ud3tn:
         condition: service_healthy
-  bob-sink:
+  ud3tn-config-rx:
     image: ud3tn-python:exp
     networks:
       - charon
     environment:
       AAP2_SECRET: "my_extremely_secret_secret_omg_i_love_this_secretly_secret_secret"
     command:
-      - /usr/local/bin/aap2-receive
+      - /usr/local/bin/aap2-config
       - --tcp
       - bob-ud3tn
       - "4225"
       - --secret-var
       - AAP2_SECRET
-      - -a
-      - hey
-      - --newline
+      - --schedule
+      - "1"
+      - "3600000"
+      - "100000"
+      - dtn://alice.dtn/
+      - "mtcp:alice-ud3tn:4224"
     depends_on:
-      ud3tn-config:
-        condition: service_completed_successfully
+      alice-ud3tn:
+        condition: service_healthy
+      bob-ud3tn:
+        condition: service_healthy
 
 networks:
   charon:
