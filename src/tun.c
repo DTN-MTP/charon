@@ -39,7 +39,8 @@ int tun_alloc(char *ifname) {
 }
 
 int open_tunnel(charon_config *config) {
-  tun_alloc(DEFAULT_TUNNEL_NAME);
+  int fd = tun_alloc(DEFAULT_TUNNEL_NAME);
   setup_route(DEFAULT_TUNNEL_NAME, config->address, config->mtu);
-  return 0;
+  return fd;
 }
+

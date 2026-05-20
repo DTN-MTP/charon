@@ -1,6 +1,4 @@
-#include "log.h"
-#include "tun.h"
-#include "aap2_client.h"
+#include "charon.h"
 #include <string.h>
 
 const char *DEFAULT_CONFIG_FILE = "charon.conf";
@@ -11,13 +9,8 @@ int main() {
     return 1;
  }
 
-  aap2_client* client = connect_aap2(config->aap2_address, config->secret_name);
+  charon_tunnel tunnel;
+  charon_init(&tunnel, config);
 
-  configure_aap2(client, 0, 0, "", config->remote_eid);
-
-  send_aap2(client, config->remote_eid, "Hello world and everyone from anywhere", strlen("Hello world and everyone from anywhere") * sizeof(char));
-
-  log_info(client->node_eid);
-
-  close_aap2(client);
+  charon_run_tunnel(&tunnel, config);
 }

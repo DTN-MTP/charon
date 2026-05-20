@@ -134,8 +134,9 @@ services:
       - "4225"
       - --secret-var
       - AAP2_SECRET
-      - --agentid
-      - bundlesink
+      - -a
+      - hey
+      - --newline
     depends_on:
       ud3tn-config:
         condition: service_completed_successfully
