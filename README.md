@@ -2,9 +2,12 @@
 
 A tunneling protocol through the bundle protocole enabling Delay/Disruption Tolerant Networking (DTN) for applications that weren't. Firstly implemented for over space-grade radio links through CSP.
 
-## Build from source
+## Build from source (Linux)
+
+You will need `protobuf-c-compiler` and `libprotobuf-c-dev` to compile the project.
 
 ```bash
+make proto
 make
 ```
 
