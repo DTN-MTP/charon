@@ -9,14 +9,18 @@ services:
     build: .
     container_name: alice
     environment:
-      AAP2_SECRET: "my_extremely_secret_secret_omg_i_love_this_secretly_secret_secret"
+      D3TN_AAP2_KEY: "my_extremely_secret_secret_omg_i_love_this_secretly_secret_secret"
     networks:
       - charon
     command:
-      - /app/charon
+      - /app/build/charon
       - /app/conf/charon.conf
+    cap_add:
+      - NET_ADMIN
     volumes:
       - ./alice/:/app/conf/
+    devices:
+      - /dev/net/tun
     profiles:
       - tests
     depends_on:
@@ -28,14 +32,18 @@ services:
     build: .
     container_name: bob
     environment:
-      AAP2_SECRET: "my_extremely_secret_secret_omg_i_love_this_secretly_secret_secret"
+      D3TN_AAP2_KEY: "my_extremely_secret_secret_omg_i_love_this_secretly_secret_secret"
     networks:
       - charon
+    cap_add:
+      - NET_ADMIN
     command:
-      - /app/charon
+      - /app/build/charon
       - /app/conf/charon.conf
     volumes:
       - ./bob:/app/conf/
+    devices:
+      - /dev/net/tun
     profiles:
       - tests
     depends_on:

@@ -117,11 +117,12 @@ void *_charon_listen_tun(void *arg) {
 
 void message_handler(aap2_answer *answer, int fd) {
   log_info(answer->payload);
-  // if (write(fd, answer->payload, answer->message->adu->payload_length) <
-  //     0) { // might need to replace write() with a more specific function
-  //          // depending on the type of network interface
-  //   log_error("Failed to write to network interface");
-  // }
+  log_info("FD : %i", fd);
+  if (write(fd, answer->payload, answer->message->adu->payload_length) <
+      0) { // might need to replace write() with a more specific function
+           // depending on the type of network interface
+    log_error("Failed to write to network interface");
+  }
 }
 
 void *_charon_listen_aap2(void *arg) {
@@ -148,6 +149,7 @@ int charon_run_tunnel(charon_tunnel *tunnel, charon_config *config) {
   // Wait for threads
   pthread_join(thread1, NULL);
   pthread_join(thread2, NULL);
+
 
   return 0;
 }
