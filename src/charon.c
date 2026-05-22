@@ -22,15 +22,6 @@ int charon_forward_packet(charon_tunnel *tunnel, const charon_config *config,
   return 0;
 }
 
-// send bundle to ifnet interface dtn -> ifnet
-int charon_forward_bundle(charon_tunnel *tunnel, uint8_t *bundle,
-                          int bundle_size) {}
-
-int charon_receive_bundle(charon_tunnel *tunnel, uint8_t *buffer,
-                          int buffer_size) {
-  return 0;
-}
-
 int charon_close_tunnel(charon_tunnel *tunnel) {
   if (close((tunnel->net_interface)) < 0) {
     log_error("Failed to close network interface");
@@ -49,12 +40,12 @@ int charon_close_tunnel(charon_tunnel *tunnel) {
 
 int charon_init(charon_tunnel *tunnel, charon_config *config) {
   aap2_client *tx = connect_aap2(config->aap2_address, config->secret_name);
-  if (configure_aap2(tx, 0, 0, config->secret_name, config->remote_eid) < 0) {
+  if (configure_aap2(tx, 0, 0) < 0) {
     return -1;
   }
 
   aap2_client *rx = connect_aap2(config->aap2_address, config->secret_name);
-  if (configure_aap2(rx, 1, 0, config->secret_name, config->remote_eid) < 0) {
+  if (configure_aap2(rx, 1, 0) < 0) {
     return -1;
   }
 
@@ -128,7 +119,6 @@ void message_handler(aap2_answer *answer, int fd) {
 void *_charon_listen_aap2(void *arg) {
   listen_tun_args *args = (listen_tun_args *)arg;
   charon_tunnel *tunnel = args->tunnel;
-  charon_config *config = args->config;
   recv_aap2(tunnel->dtn_rx_interface, message_handler, tunnel->net_interface);
   return NULL;
 }

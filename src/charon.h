@@ -12,11 +12,7 @@ typedef struct {
 
 int charon_forward_packet(charon_tunnel *tunnel, const charon_config *config,
                           uint8_t *packet, int packet_size);
-int charon_forward_bundle(charon_tunnel *tunnel, uint8_t *bundle,
-                          int bundle_size);
 int charon_receive_packet(charon_tunnel *tunnel, uint8_t *buffer,
-                          int buffer_size);
-int charon_receive_bundle(charon_tunnel *tunnel, uint8_t *buffer,
                           int buffer_size);
 
 int charon_run_tunnel(charon_tunnel *tunnel, charon_config *config);

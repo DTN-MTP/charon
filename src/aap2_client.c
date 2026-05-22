@@ -133,8 +133,6 @@ int create_unix_socket(const char *path) {
   serv_addr.sun_family = AF_UNIX;
   strncpy(serv_addr.sun_path, path, sizeof(serv_addr.sun_path) - 1);
 
-  uint8_t marker_byte;
-
   log_info("Connecting to %s", serv_addr.sun_path);
   if (connect(fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
     log_error("Couldn't connect to unix socket");
@@ -154,7 +152,7 @@ int create_tcp_socket(const char *host, const char *port) {
     return -1;
   }
 
-  struct addrinfo hints, *servinfo, *p;
+  struct addrinfo hints, *servinfo;
   memset(&hints, 0, sizeof(hints));
   hints.ai_family = AF_INET;
   hints.ai_socktype = SOCK_STREAM;
@@ -246,8 +244,7 @@ aap2_client *connect_aap2(const char *aap2_url, const char *secret_name) {
 
 // https://protobuf-c.github.io/protobuf-c/pack.html
 int configure_aap2(aap2_client *client, int is_subscriber,
-                   Aap2__AuthType auth_type, const char *secret,
-                   char *endpoint_id) {
+                   Aap2__AuthType auth_type) {
   Aap2__ConnectionConfig config_message;
   aap2__connection_config__init(&config_message);
   // TODO: replace that with parameterd or random agent id
@@ -262,7 +259,7 @@ int configure_aap2(aap2_client *client, int is_subscriber,
   }
 
   config_message.endpoint_id = eid;
-  config_message.auth_type = AAP2__AUTH_TYPE__AUTH_TYPE_DEFAULT;
+  config_message.auth_type = auth_type;
   config_message.is_subscriber = is_subscriber;
   config_message.secret = client->secret;
   config_message.keepalive_seconds = 0;
@@ -275,9 +272,6 @@ int configure_aap2(aap2_client *client, int is_subscriber,
   size_t packed_size = aap2__aapmessage__get_packed_size(&wrapper);
   uint8_t *buf = malloc(packed_size);
   aap2__aapmessage__pack(&wrapper, buf);
-
-  log_info("EID : %s", config_message.endpoint_id);
-  log_info("secret : %s", config_message.secret);
 
   if (send_varint(client->socket_fd, packed_size) < 0) {
     log_error("Couldn't send varint");
@@ -373,7 +367,7 @@ int handle_aap2_response(uint8_t *message, uint64_t msg_size) {
   }
 }
 
-int send_aap2(aap2_client *client, const char *dst_eid, const uint8_t *payload,
+int send_aap2(aap2_client *client, const char *dst_eid, uint8_t *payload,
               size_t payload_len) {
   Aap2__BundleADU bundle_adu;
   aap2__bundle_adu__init(&bundle_adu);
@@ -388,7 +382,7 @@ int send_aap2(aap2_client *client, const char *dst_eid, const uint8_t *payload,
     return -1;
   }
 
-  bundle_adu.dst_eid = dst_eid;
+  bundle_adu.dst_eid = (char *)dst_eid;
   bundle_adu.src_eid = eid;
   bundle_adu.payload_length = payload_len;
 
