@@ -53,11 +53,7 @@ services:
         condition: service_completed_successfully
 
   alice-ud3tn:
-    image: ud3tn:exp-debug
-    cap_add:
-      - SYS_PTRACE
-    security_opt:
-      - seccomp:unconfined
+    image: registry.gitlab.com/d3tn/ud3tn-docker-images/ud3tn:v0.15.0
     networks:
       - charon
     ports:
@@ -91,11 +87,13 @@ services:
       retries: 1
       start_period: 1s
   bob-ud3tn:
-    image: ud3tn:exp-debug
+    image: registry.gitlab.com/d3tn/ud3tn-docker-images/ud3tn:v0.15.0
     networks:
       - charon
     environment:
       AAP2_SECRET: "my_extremely_secret_secret_omg_i_love_this_secretly_secret_secret"
+    ports:
+      - 4226:4225
     command:
       - --allow-remote-config
       - -b

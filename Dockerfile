@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libprotobuf-c-dev \
     protobuf-c-compiler \
 	iproute2 \
+	netcat-traditional \
     && rm -rf /var/lib/apt/lists/*
 
 RUN wget https://github.com/protocolbuffers/protobuf/releases/download/v34.1/protoc-34.1-linux-x86_64.zip && \
