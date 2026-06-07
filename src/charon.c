@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/select.h>
 #include <unistd.h>
@@ -70,15 +71,14 @@ void *_charon_listen_tun(void *arg) {
   uint8_t tun_buf[BUF_SIZE];
   fd_set read_fds;
   int tun_fd = tunnel->net_interface;
-  struct timeval tv;
-  tv.tv_usec = 5000;
 
   // Set non-blocking mode
   int flags = fcntl(tun_fd, F_GETFL, 0);
   fcntl(tun_fd, F_SETFL, flags | O_NONBLOCK);
   log_info("Running tunnel");
 
-  while (1) {
+  while (true) {
+    struct timeval tv = { .tv_sec = 0, .tv_usec = 5000 };
     FD_ZERO(&read_fds);
     FD_SET(tun_fd, &read_fds);
 
@@ -87,28 +87,29 @@ void *_charon_listen_tun(void *arg) {
       if (errno == EINTR)
         continue; // Interrupted by signal
       log_error("select() failed: %s", strerror(errno));
+	  free(args);
       return NULL;
     }
 
     if (FD_ISSET(tun_fd, &read_fds)) {
-      log_info("%i\n", tun_fd);
-      log_info("Got packet !");
       ssize_t nread = read(tun_fd, tun_buf, sizeof(tun_buf));
       if (nread < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
           continue; // No data, retry
         }
         log_error("read() failed: %s", strerror(errno));
+		free(args);
         return NULL;
       }
       charon_forward_packet(tunnel, config, tun_buf, nread);
     }
   }
+
+  free(args);
+  return NULL;
 }
 
 void message_handler(aap2_answer *answer, int fd) {
-  log_info(answer->payload);
-  log_info("FD : %i", fd);
   if (write(fd, answer->payload, answer->message->adu->payload_length) <
       0) { // might need to replace write() with a more specific function
            // depending on the type of network interface

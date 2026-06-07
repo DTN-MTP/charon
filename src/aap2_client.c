@@ -250,11 +250,11 @@ int configure_aap2(aap2_client *client, int is_subscriber,
   // TODO: replace that with parameterd or random agent id
   char *agent_id = "charon";
 
-  char *eid =
-      malloc((strlen(agent_id) + strlen(client->node_eid)) * sizeof(char));
+  char *eid = malloc(strlen(agent_id) + strlen(client->node_eid) + 1);
 
   if (sprintf(eid, "%s%s", client->node_eid, agent_id) < 0) {
     log_error("Couldn't build EID and agent ID");
+	free(eid);
     return -1;
   }
 
@@ -270,16 +270,20 @@ int configure_aap2(aap2_client *client, int is_subscriber,
   wrapper.config = &config_message;
 
   size_t packed_size = aap2__aapmessage__get_packed_size(&wrapper);
-  uint8_t *buf = malloc(packed_size);
+  uint8_t *buf = malloc(packed_size + 1);
   aap2__aapmessage__pack(&wrapper, buf);
 
   if (send_varint(client->socket_fd, packed_size) < 0) {
     log_error("Couldn't send varint");
+	free(buf);
+	free(eid);
     return -1;
   }
 
   if (send_exact(client->socket_fd, buf, packed_size) < 0) {
     log_error("Couldn't send configuration");
+	free(eid);
+	free(buf);
     return -1;
   }
 
@@ -289,6 +293,7 @@ int configure_aap2(aap2_client *client, int is_subscriber,
   uint64_t msg_size;
   if (recv_varint(client->socket_fd, &msg_size) < 0) {
     log_error("Couldn't receive var int");
+	free(eid);
     return -1;
   }
 
@@ -298,15 +303,16 @@ int configure_aap2(aap2_client *client, int is_subscriber,
 
   if (recv_exact(client->socket_fd, message, msg_size) < 0) {
     log_error("Couldn't receive EID.");
+	free(message);
+	free(eid);
     return -1;
   }
 
   Aap2__AAPResponse *aap2_response =
       aap2__aapresponse__unpack(NULL, msg_size, message);
 
-  log_info("%i", aap2_response->response_status);
-
   free(message);
+  aap2__aapresponse__free_unpacked(aap2_response, NULL);
 
   return 0;
 }
@@ -375,7 +381,7 @@ int send_aap2(aap2_client *client, const char *dst_eid, uint8_t *payload,
   char *agent_id = "charon";
 
   char *eid =
-      malloc((strlen(agent_id) + strlen(client->node_eid)) * sizeof(char));
+      malloc(strlen(agent_id) + strlen(client->node_eid) + 1);
 
   if (sprintf(eid, "%s%s", client->node_eid, agent_id) < 0) {
     log_error("Couldn't build EID and agent ID");
@@ -412,6 +418,7 @@ int send_aap2(aap2_client *client, const char *dst_eid, uint8_t *payload,
 
   log_info("Configuration sent !");
   free(buf);
+  free(eid);
 
   return -1;
 }
@@ -485,10 +492,9 @@ int recv_one_adu(aap2_answer *answer, int fd, aap2_client *client) {
 int recv_aap2(aap2_client *client, aap2_message_handler handler, int tun_fd) {
   fd_set read_fds;
   int fd = client->socket_fd;
-  struct timeval tv;
-  tv.tv_usec = 5000;
 
   while (1) {
+    struct timeval tv = { .tv_sec = 0, .tv_usec = 5000 };
     FD_ZERO(&read_fds);
     FD_SET(fd, &read_fds);
     if (select(fd + 1, &read_fds, NULL, NULL, &tv) < 0) {
@@ -505,6 +511,8 @@ int recv_aap2(aap2_client *client, aap2_message_handler handler, int tun_fd) {
         return -1;
       }
       handler(&answer, tun_fd);
+      aap2__aapmessage__free_unpacked(answer.message, NULL);
+      free(answer.payload);
     }
   }
 }

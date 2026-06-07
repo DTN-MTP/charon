@@ -8,3 +8,4 @@ typedef struct {
 } charon_config;
 
 charon_config *read_config(const char *filename);
+void free_config(charon_config *config);

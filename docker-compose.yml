@@ -23,6 +23,7 @@ services:
       - /dev/net/tun
     profiles:
       - tests
+      - alice
     depends_on:
       ud3tn-config-rx:
         condition: service_completed_successfully
@@ -46,6 +47,7 @@ services:
       - /dev/net/tun
     profiles:
       - tests
+      - bob
     depends_on:
       ud3tn-config-rx:
         condition: service_completed_successfully

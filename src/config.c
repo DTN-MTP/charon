@@ -36,8 +36,17 @@ charon_config *read_config(const char *filename) {
   charon_config *config = malloc(sizeof(charon_config));
   if (ini_parse(filename, handler, config) < 0) {
     log_error("Failed to read config file '%s'", filename);
-    free(config);
+    free_config(config);
     return NULL;
   }
   return config;
+}
+
+void free_config(charon_config *config) {
+    if (!config) return;
+    free(config->aap2_address);
+    free(config->remote_eid);
+    free(config->secret_name);
+    free(config->address);
+    free(config);
 }
