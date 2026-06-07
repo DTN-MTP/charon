@@ -25,4 +25,6 @@ jobs:
             libprotobuf-c-dev 
 
       - name: Run unit tests
-        run: make test TEST=config
+        run: |
+          mkdir build
+          make test TEST=config
