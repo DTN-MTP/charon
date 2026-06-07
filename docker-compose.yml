@@ -18,7 +18,7 @@ services:
     cap_add:
       - NET_ADMIN
     volumes:
-      - ./tests/alice/:/app/conf/
+      - ./configs/alice/:/app/conf/
     devices:
       - /dev/net/tun
     profiles:
@@ -42,7 +42,7 @@ services:
       - /app/build/charon
       - /app/conf/charon.conf
     volumes:
-      - ./tests/bob:/app/conf/
+      - ./configs/bob:/app/conf/
     devices:
       - /dev/net/tun
     profiles:
