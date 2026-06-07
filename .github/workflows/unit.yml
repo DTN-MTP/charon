@@ -1,0 +1,28 @@
+name: Unit tests
+
+on: [push, pull_request]
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache packages
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives
+          key: apt-${{ runner.os }}-${{ hashFiles('.github/apt-packages.txt') }}
+          restore-keys: |
+            apt-${{ runner.os }}-
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            make \
+            protobuf-c-compiler \
+            protobuf-compiler \
+            libprotobuf-c-dev 
+
+      - name: Run unit tests
+        run: make test TEST=config
