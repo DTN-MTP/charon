@@ -17,7 +17,7 @@ static int handler(void *user, const char *section, const char *name,
     } else if (strcmp(name, "secret_name") == 0) {
       pconfig->secret_name = strdup(value);
     }
-  } else if (strcmp(section, "interface") == 0) {
+  } else if (strcmp(section, "ip") == 0) {
     if (strcmp(name, "address") == 0) {
       pconfig->address = strdup(value);
     } else if (strcmp(name, "mtu") == 0) {
@@ -26,6 +26,10 @@ static int handler(void *user, const char *section, const char *name,
       return 0; /* unknown name */
     }
 
+  } else if (strcmp(section, "can")) {
+    if (strcmp(name, "bitrate") == 0) {
+      pconfig->bitrate = atoi(value);
+    }
   } else {
     return 0; /* unknown section */
   }
@@ -43,10 +47,11 @@ charon_config *read_config(const char *filename) {
 }
 
 void free_config(charon_config *config) {
-    if (!config) return;
-    free(config->aap2_address);
-    free(config->remote_eid);
-    free(config->secret_name);
-    free(config->address);
-    free(config);
+  if (!config)
+    return;
+  free(config->aap2_address);
+  free(config->remote_eid);
+  free(config->secret_name);
+  free(config->address);
+  free(config);
 }
