@@ -11,13 +11,14 @@ static int handler(void *user, const char *section, const char *name,
   if (strcmp(section, "bundle") == 0) {
     if (strcmp(name, "aap2_address") == 0) {
       pconfig->aap2_address = strdup(value);
-      log_info(pconfig->aap2_address);
     } else if (strcmp(name, "remote_eid") == 0) {
       pconfig->remote_eid = strdup(value);
     } else if (strcmp(name, "secret_name") == 0) {
       pconfig->secret_name = strdup(value);
+    } else {
+      return 0;
     }
-  } else if (strcmp(section, "interface") == 0) {
+  } else if (strcmp(section, "ip") == 0) {
     if (strcmp(name, "address") == 0) {
       pconfig->address = strdup(value);
     } else if (strcmp(name, "mtu") == 0) {
@@ -25,7 +26,22 @@ static int handler(void *user, const char *section, const char *name,
     } else {
       return 0; /* unknown name */
     }
-
+  } else if (strcmp(section, "can") == 0) {
+    if (strcmp(name, "bitrate") == 0) {
+      pconfig->bitrate = atoi(value);
+    } else {
+      return 0;
+    }
+  } else if (strcmp(section, "interface") == 0) {
+    if (strcmp(name, "type") == 0) {
+      if (strcmp(value, "ip") == 0) {
+        pconfig->interface_type = IP;
+      } else if (strcmp(value, "can") == 0) {
+        pconfig->interface_type = CAN;
+      } else {
+        return 0;
+      }
+    }
   } else {
     return 0; /* unknown section */
   }
@@ -33,20 +49,28 @@ static int handler(void *user, const char *section, const char *name,
 }
 
 charon_config *read_config(const char *filename) {
-  charon_config *config = malloc(sizeof(charon_config));
+  charon_config *config = calloc(1, sizeof(charon_config));
+  
   if (ini_parse(filename, handler, config) < 0) {
     log_error("Failed to read config file '%s'", filename);
     free_config(config);
     return NULL;
   }
+  if(config->interface_type == IP) {
+		  log_info("using IP mode with %s and MTU = %i", config->address, config->mtu);
+  } else if(config->interface_type == CAN) {
+
+		  log_info("using CAN mode with %i bitrate", config->bitrate);
+  }
   return config;
 }
 
 void free_config(charon_config *config) {
-    if (!config) return;
-    free(config->aap2_address);
-    free(config->remote_eid);
-    free(config->secret_name);
-    free(config->address);
-    free(config);
+  if (!config)
+    return;
+  free(config->aap2_address);
+  free(config->remote_eid);
+  free(config->secret_name);
+  free(config->address);
+  free(config);
 }

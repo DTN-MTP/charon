@@ -1,4 +1,5 @@
 #include "config.h"
+
 #define TUN_DEVICE "/dev/net/tun"
 #define DEFAULT_TUNNEL_NAME "tun0"
 
