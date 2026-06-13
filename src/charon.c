@@ -50,11 +50,29 @@ int charon_init(charon_tunnel *tunnel, charon_config *config) {
     return -1;
   }
 
-  int tun_fd = open_tunnel(config);
+  int fd;
+
+  switch (config->interface_type) {
+  case IP:
+    fd = open_tunnel(config);
+    if (fd < 0) {
+      return -1;
+    }
+    break;
+  case CAN:
+    fd = can_open_tunnel(config);
+    if (fd < 0) {
+      return -1;
+    }
+    break;
+  default:
+    log_error("Unknown tunnel type");
+    return -1;
+  }
 
   tunnel->dtn_tx_interface = tx;
   tunnel->dtn_rx_interface = rx;
-  tunnel->net_interface = tun_fd;
+  tunnel->net_interface = fd;
 
   return 0;
 }
@@ -68,40 +86,38 @@ void *_charon_listen_tun(void *arg) {
   listen_tun_args *args = (listen_tun_args *)arg;
   charon_tunnel *tunnel = args->tunnel;
   charon_config *config = args->config;
-  uint8_t tun_buf[BUF_SIZE];
+  uint8_t net_buf[BUF_SIZE];
   fd_set read_fds;
-  int tun_fd = tunnel->net_interface;
+  int net_fd = tunnel->net_interface;
 
   // Set non-blocking mode
-  int flags = fcntl(tun_fd, F_GETFL, 0);
-  fcntl(tun_fd, F_SETFL, flags | O_NONBLOCK);
+  int flags = fcntl(net_fd, F_GETFL, 0);
+  fcntl(net_fd, F_SETFL, flags | O_NONBLOCK);
   log_info("Running tunnel");
 
   while (true) {
-    struct timeval tv = { .tv_sec = 0, .tv_usec = 5000 };
+    struct timeval tv = {.tv_sec = 0, .tv_usec = 5000};
     FD_ZERO(&read_fds);
-    FD_SET(tun_fd, &read_fds);
+    FD_SET(net_fd, &read_fds);
 
     // Fix: Use tun_fd + 1 as the first argument
-    if (select(tun_fd + 1, &read_fds, NULL, NULL, &tv) < 0) {
+    if (select(net_fd + 1, &read_fds, NULL, NULL, &tv) < 0) {
       if (errno == EINTR)
         continue; // Interrupted by signal
       log_error("select() failed: %s", strerror(errno));
-	  free(args);
+      free(args);
       return NULL;
     }
 
-    if (FD_ISSET(tun_fd, &read_fds)) {
-      ssize_t nread = read(tun_fd, tun_buf, sizeof(tun_buf));
+    if (FD_ISSET(net_fd, &read_fds)) {
+      ssize_t nread = read(net_fd, net_buf, sizeof(net_buf));
       if (nread < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK) {
           continue; // No data, retry
         }
-        log_error("read() failed: %s", strerror(errno));
-		free(args);
-        return NULL;
+        log_error("read() failed: %s, net_fd : %i", strerror(errno));
       }
-      charon_forward_packet(tunnel, config, tun_buf, nread);
+      charon_forward_packet(tunnel, config, net_buf, nread);
     }
   }
 
@@ -135,12 +151,19 @@ int charon_run_tunnel(charon_tunnel *tunnel, charon_config *config) {
 
   // Create threads
   pthread_create(&thread1, NULL, _charon_listen_aap2, (void *)&args);
-  pthread_create(&thread2, NULL, _charon_listen_tun, (void *)&args);
+
+  switch (config->interface_type) {
+  case IP:
+    pthread_create(&thread2, NULL, _charon_listen_tun, (void *)&args);
+    break;
+  case CAN:
+    pthread_create(&thread2, NULL, _charon_listen_tun, (void *)&args);
+    break;
+  };
 
   // Wait for threads
   pthread_join(thread1, NULL);
   pthread_join(thread2, NULL);
-
 
   return 0;
 }

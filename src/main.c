@@ -1,4 +1,5 @@
 #include "charon.h"
+#include "config.h"
 #include "stdio.h"
 #include <string.h>
 
@@ -32,7 +33,9 @@ int main(int argc, char *argv[]) {
   }
 
   charon_tunnel tunnel;
-  charon_init(&tunnel, config);
+  if(charon_init(&tunnel, config) < 0) {
+		free_config(config);
+  }
 
   charon_run_tunnel(&tunnel, config);
 }
