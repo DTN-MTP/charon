@@ -1,4 +1,4 @@
-# CubeSat Protocol (CSP) Tunneling
+# CubeSat Protocol (CSP) support
 
 Charon currently only provides IP encapsulation thanks to a TUN virtual IP interface. But we also want to provide
 encapsulation for CSP applications. We have two possibilities so far. Either encapsulate CAN frames or CSP packets.
@@ -32,4 +32,11 @@ So in the end, CSP encapsulation can not be the solution unless the CSUM is ok w
 
 # CAN encapsulation
 
-A project named [cannelloni](https://github.com/mguentner/cannelloni/tree/master) already provides CAN encapsulation over Ethernet.
+A project named [cannelloni](https://github.com/mguentner/cannelloni/tree/master) already provides CAN encapsulation over Ethernet. However
+CAN encapsulation is not enough to make CSP applications delay/disruption tolerant.
+
+## CSP P2P
+
+The solution is to do some CSP P2P ts.
+
+
