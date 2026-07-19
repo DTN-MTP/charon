@@ -489,7 +489,7 @@ int recv_one_adu(aap2_answer *answer, int fd, aap2_client *client) {
   return 0;
 }
 
-int recv_aap2(aap2_client *client, aap2_message_handler handler, int tun_fd) {
+int recv_aap2(aap2_client *client, aap2_message_handler handler, void* rx) {
   fd_set read_fds;
   int fd = client->socket_fd;
 
@@ -510,7 +510,7 @@ int recv_aap2(aap2_client *client, aap2_message_handler handler, int tun_fd) {
       if (res < 0) {
         return -1;
       }
-      handler(&answer, tun_fd);
+      handler(&answer, rx);
       aap2__aapmessage__free_unpacked(answer.message, NULL);
       free(answer.payload);
     }

@@ -3,7 +3,11 @@
 #include <csp/drivers/can_socketcan.h>
 #include <csp/drivers/usart.h>
 
-int setup_route(int address);
-int setup_interface(char* can_device);
-int csp_proxy_listen(int port, void *rx_csp_to_bpa, void (*tx_bpa_to_csp)(void *));
-int csp_proxy_send(int address, int port, void *rx_bpa_to_csp, void (*tx_csp_to_bpa)(void *));
+// Handler function type: takes context and connection
+typedef void *(*csp_handler_func)(void *context, csp_conn_t *conn);
+
+int csp_setup_route(int address);
+int csp_setup_interface(char* can_device);
+int csp_proxy_listen(int port, void *context, csp_handler_func rx_handler, csp_handler_func tx_handler);
+int csp_proxy_send(int address, int port, void *context, csp_handler_func rx_handler, csp_handler_func tx_handler);
+

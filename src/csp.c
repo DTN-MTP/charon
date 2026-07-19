@@ -1,11 +1,26 @@
 #include "csp.h"
 #include "log.h"
 #include <csp/interfaces/csp_if_lo.h>
+#include <stdlib.h>
+
+// Internal struct to pass handler, context, and connection to threads
+typedef struct {
+	csp_handler_func handler;
+	void *context;
+	csp_conn_t *conn;
+} csp_thread_args;
+
+// Trampoline function for pthread_create - unpacks the args struct
+static void *csp_handler_trampoline(void *arg) {
+	csp_thread_args *args = (csp_thread_args *)arg;
+	void *result = args->handler(args->context, args->conn);
+	free(args);
+	return result;
+}
 
 // I based my implementation on work that I did here :
 // https://github.com/Courtcircuits/ccsp
-
-int setup_route(int address) {
+int csp_setup_route(int address) {
   csp_conf_t csp_conf;
   csp_conf_get_defaults(&csp_conf);
   csp_conf.address = address;
@@ -21,7 +36,7 @@ int setup_route(int address) {
   return 0;
 }
 
-int setup_interface(char *can_device) {
+int csp_setup_interface(char *can_device) {
   csp_iface_t *default_iface = NULL;
   int error;
 
@@ -45,15 +60,16 @@ int setup_interface(char *can_device) {
   return 0;
 }
 
-// This listenner handles the client applications
+// This listener handles the client applications
 // They initiate a connection with charon and charon
 // forwards their payload to the BPA
 //
 // On responses, charon send the answer to the app through CSP
 // rx_thread CSP -> BPA
 // tx_thread (main thread) BPA -> CSP
-int csp_proxy_listen(int port, void *rx_csp_to_bpa,
-                     void (*tx_bpa_to_csp)(void *)) {
+int csp_proxy_listen(int port, void *context,
+                     csp_handler_func rx_handler,
+                     csp_handler_func tx_handler) {
   csp_socket_t *sock = csp_socket(CSP_SO_NONE);
   csp_bind(sock, port);
   csp_listen(sock, 10);
@@ -65,14 +81,22 @@ int csp_proxy_listen(int port, void *rx_csp_to_bpa,
       continue;
     }
 
+    // Create args for rx thread with context and connection
+    csp_thread_args *rx_args = malloc(sizeof(csp_thread_args));
+    rx_args->handler = rx_handler;
+    rx_args->context = context;
+    rx_args->conn = conn;
+
     pthread_t rx_thread;
-    if (pthread_create(&rx_thread, NULL, rx_csp_to_bpa, conn) != 0) {
+    if (pthread_create(&rx_thread, NULL, csp_handler_trampoline, rx_args) != 0) {
       log_error("Failed to create receiver thread");
       csp_close(conn);
+      free(rx_args);
       return -1;
     }
 
-    tx_bpa_to_csp(conn);
+    // tx_handler runs in the current thread
+    tx_handler(context, conn);
 
     csp_close(conn);
     pthread_join(rx_thread, NULL);
@@ -85,8 +109,9 @@ int csp_proxy_listen(int port, void *rx_csp_to_bpa,
 // The servers should already be running before charon
 // Charon connects to the CSP app and forwards incoming
 // packets to the app
-int csp_proxy_send(int address, int port, void *rx_bpa_to_csp,
-                   void (*tx_csp_to_bpa)(void *)) {
+int csp_proxy_send(int address, int port, void *context,
+                   csp_handler_func rx_handler,
+                   csp_handler_func tx_handler) {
   csp_conn_t *conn =
       csp_connect(CSP_PRIO_NORM, address, port, 1000, CSP_O_NONE);
   if (conn == NULL) {
@@ -94,15 +119,22 @@ int csp_proxy_send(int address, int port, void *rx_bpa_to_csp,
     return -1;
   }
 
+  // Create args for rx thread with context and connection
+  csp_thread_args *rx_args = malloc(sizeof(csp_thread_args));
+  rx_args->handler = rx_handler;
+  rx_args->context = context;
+  rx_args->conn = conn;
+
   pthread_t rx_thread;
 
-  if (pthread_create(&rx_thread, NULL, rx_bpa_to_csp, conn) != 0) {
+  if (pthread_create(&rx_thread, NULL, csp_handler_trampoline, rx_args) != 0) {
     log_error("Failed to create receiver thread");
     csp_close(conn);
+    free(rx_args);
     return -1;
   }
 
-  tx_csp_to_bpa(conn);
+  tx_handler(context, conn);
 
   csp_close(conn);
   pthread_join(rx_thread, NULL);

@@ -1,7 +1,8 @@
-#include "aap2_client.h"
 #include "config.h"
 #include "tun.h"
 #include "can.h"
+#include "aap2_client.h"
+#include <stdint.h>
 
 typedef struct {
   // File descriptor for the network interface (e.g., tun/tap device)
