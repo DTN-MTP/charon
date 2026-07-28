@@ -1,6 +1,7 @@
-#include "charon.h"
 #include "config.h"
+#include "proxy.h"
 #include "stdio.h"
+#include "tunnel.h"
 #include <string.h>
 
 const char *DEFAULT_CONFIG_FILE = "charon.conf";
@@ -9,6 +10,23 @@ static void show_usage(char *prog_name) {
   printf("Usage: %s <config-path>. By default config-path is set to %s.\n",
          prog_name, DEFAULT_CONFIG_FILE);
   printf("You may pass `--help` to view usage.\n");
+}
+
+void run_tunnel(charon_config *config) {
+  charon_tunnel tunnel;
+  if (charon_init(&tunnel, config) < 0) {
+    free_config(config);
+  }
+  charon_run_tunnel(&tunnel, config);
+}
+
+void run_proxy(charon_config *config) {
+  charon_proxy proxy;
+  if (charon_proxy_init(&proxy, config) < 0) {
+    free_config(config);
+  }
+
+  charon_run_proxy(&proxy, config);
 }
 
 int main(int argc, char *argv[]) {
@@ -32,10 +50,15 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  charon_tunnel tunnel;
-  if(charon_init(&tunnel, config) < 0) {
-		free_config(config);
+  switch (config->interface_type) {
+  case IP:
+    run_tunnel(config);
+    break;
+  case CAN:
+    run_tunnel(config);
+    break;
+  case CSP:
+    run_proxy(config);
+    break;
   }
-
-  charon_run_tunnel(&tunnel, config);
 }

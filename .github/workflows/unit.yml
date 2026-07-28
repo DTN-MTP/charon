@@ -22,9 +22,13 @@ jobs:
             make \
             protobuf-c-compiler \
             protobuf-compiler \
-            libprotobuf-c-dev 
+            libprotobuf-c-dev  \
+            git
+      - name: Install libcsp
+        run: |
+          git clone --depth 1 --branch v1.6 https://github.com/libcsp/libcsp
 
       - name: Run unit tests
         run: |
           mkdir build
-          make test TEST=config
+          make test TEST=config CSP_REPO_DIR=./libcsp

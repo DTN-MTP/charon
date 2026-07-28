@@ -1,5 +1,7 @@
-#include "charon.h"
+#include "tunnel.h"
+#include "config.h"
 #include "log.h"
+#include <stdint.h>
 #include <bits/types/struct_timeval.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -17,7 +19,7 @@ int charon_forward_packet(charon_tunnel *tunnel, const charon_config *config,
                           uint8_t *packet, int packet_size) {
   if (send_aap2(tunnel->dtn_tx_interface, config->remote_eid, packet,
                 packet_size) < 0) {
-    log_error("Failed to send packet to DTN node");
+    log_error("Failed to send packet to BPA");
     return -1;
   }
   return 0;
@@ -125,8 +127,9 @@ void *_charon_listen_tun(void *arg) {
   return NULL;
 }
 
-void message_handler(aap2_answer *answer, int fd) {
-  if (write(fd, answer->payload, answer->message->adu->payload_length) <
+void tun_message_handler(aap2_answer *answer, void* rx) {
+  int* fd = (int*) rx;
+  if (write(*fd, answer->payload, answer->message->adu->payload_length) <
       0) { // might need to replace write() with a more specific function
            // depending on the type of network interface
     log_error("Failed to write to network interface");
@@ -136,7 +139,7 @@ void message_handler(aap2_answer *answer, int fd) {
 void *_charon_listen_aap2(void *arg) {
   listen_tun_args *args = (listen_tun_args *)arg;
   charon_tunnel *tunnel = args->tunnel;
-  recv_aap2(tunnel->dtn_rx_interface, message_handler, tunnel->net_interface);
+  recv_aap2(tunnel->dtn_rx_interface, tun_message_handler, (void*) &tunnel->net_interface);
   return NULL;
 }
 
@@ -159,6 +162,10 @@ int charon_run_tunnel(charon_tunnel *tunnel, charon_config *config) {
   case CAN:
     pthread_create(&thread2, NULL, _charon_listen_tun, (void *)&args);
     break;
+  case CSP:
+	log_error("Cannot use CSP tunnel as of now.");
+	pthread_cancel(thread1);
+	return -1;
   };
 
   // Wait for threads

@@ -3,7 +3,13 @@
 
 enum CHARON_INTERFACE_TYPE {
 		IP,
-		CAN
+		CAN,
+		CSP
+};
+
+enum CHARON_PROXY_ROLE {
+		CHARON_LISTEN,
+		CHARON_WRITE
 };
 
 typedef struct {
@@ -18,6 +24,12 @@ typedef struct {
   int mtu;
   // can
   int bitrate;
+  // csp
+  char *can_interface;
+  int csp_port;
+  int peer_csp_address;
+  int local_csp_address;
+  enum CHARON_PROXY_ROLE proxy_role;
 } charon_config;
 
 charon_config *read_config(const char *filename);

@@ -1,3 +1,6 @@
+#ifndef AAP2_CLIENT_H
+#define AAP2_CLIENT_H
+
 #include "proto/aap2.pb-c.h"
 
 enum CONNECTION_TYPE { AAP2_INET, AAP2_UNIX };
@@ -22,7 +25,7 @@ typedef struct {
 } aap2_client;
 
 typedef void (*aap2_message_handler)(aap2_answer *,
-                                     int); // define handler for aap2 message
+                                     void *); // define handler for aap2 message
 
 aap2_client *connect_aap2(const char *path, const char *secret_name);
 int configure_aap2(aap2_client *client, int is_subscriber,
@@ -31,7 +34,9 @@ int configure_aap2(aap2_client *client, int is_subscriber,
 int send_aap2(aap2_client *client, const char *dst_eid, uint8_t *payload,
               size_t payload_len);
 int close_aap2(aap2_client *client);
-int recv_aap2(aap2_client *client, aap2_message_handler handler, int tun_fd);
+int recv_aap2(aap2_client *client, aap2_message_handler handler, void *rx);
 
 int recv_varint(int fd, uint64_t *out);
 int send_varint(int fd, uint64_t value);
+
+#endif // AAP2_CLIENT_H

@@ -38,9 +38,29 @@ static int handler(void *user, const char *section, const char *name,
         pconfig->interface_type = IP;
       } else if (strcmp(value, "can") == 0) {
         pconfig->interface_type = CAN;
+      } else if (strcmp(value, "csp") == 0) {
+        pconfig->interface_type = CSP;
       } else {
         return 0;
       }
+    }
+  } else if (strcmp(section, "csp") == 0) {
+    if (strcmp(name, "port") == 0) {
+      pconfig->csp_port = atoi(value);
+    } else if (strcmp(name, "remote_address") == 0) {
+      pconfig->peer_csp_address = atoi(value);
+    } else if (strcmp(name, "agent_address") == 0) {
+      pconfig->local_csp_address = atoi(value);
+    } else if (strcmp(name, "role") == 0) {
+      if (strcmp(value, "server") == 0) {
+        pconfig->proxy_role = CHARON_LISTEN;
+      } else {
+        pconfig->proxy_role = CHARON_WRITE;
+      }
+    } else if (strcmp(name, "can_interface") == 0) {
+      pconfig->can_interface = strdup(value);
+    } else {
+      return 0;
     }
   } else {
     return 0; /* unknown section */
@@ -50,17 +70,18 @@ static int handler(void *user, const char *section, const char *name,
 
 charon_config *read_config(const char *filename) {
   charon_config *config = calloc(1, sizeof(charon_config));
-  
+
   if (ini_parse(filename, handler, config) < 0) {
     log_error("Failed to read config file '%s'", filename);
     free_config(config);
     return NULL;
   }
-  if(config->interface_type == IP) {
-		  log_info("using IP mode with %s and MTU = %i", config->address, config->mtu);
-  } else if(config->interface_type == CAN) {
+  if (config->interface_type == IP) {
+    log_info("using IP mode with %s and MTU = %i", config->address,
+             config->mtu);
+  } else if (config->interface_type == CAN) {
 
-		  log_info("using CAN mode with %i bitrate", config->bitrate);
+    log_info("using CAN mode with %i bitrate", config->bitrate);
   }
   return config;
 }

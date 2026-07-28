@@ -29,6 +29,7 @@ int can_socket_open(char *ifname) {
   struct ifreq ifr = {0};
   if (fd < 0) {
     log_error("Failed to open CAN socket");
+	close(fd);
     return -1;
   }
 

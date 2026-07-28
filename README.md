@@ -28,6 +28,8 @@ address=10.0.0.1/32 ;; The IP address of the interface to create. It must be a /
 mtu=1500 ;; The maximum transmitable unit of the tunnel
 ```
 
+Other example of configurations are available here : `./configs`
+
 ## Quick-start guide
 
 Before getting started you need to set-up a bidirectional DTN network between two µD3TN nodes. To do so, you can either [follow their getting started guide](https://d3tn.gitlab.io/ud3tn/posix_quick_start_guide/). Or use this docker compose : 

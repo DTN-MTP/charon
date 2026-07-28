@@ -13,14 +13,15 @@ services:
     networks:
       - charon
     command:
-      - /app/build/charon
-      - /app/conf/charon.conf
+      - /scripts/init.sh
+      - '&&'
+      - /app/charon
+      - /app/conf/charon.toml
     cap_add:
       - NET_ADMIN
     volumes:
-      - ./configs/ip/alice/:/app/conf/
-    devices:
-      - /dev/net/tun
+      - ./configs/csp/alice/:/app/conf/
+      - ./scripts/:/scripts/
     profiles:
       - tests
       - alice
@@ -39,12 +40,13 @@ services:
     cap_add:
       - NET_ADMIN
     command:
-      - /app/build/charon
-      - /app/conf/charon.conf
+      - /scripts/init.sh
+      - '&&'
+      - /app/charon
+      - /app/conf/charon.toml
     volumes:
-      - ./configs/ip/bob:/app/conf/
-    devices:
-      - /dev/net/tun
+      - ./configs/csp/bob:/app/conf/
+      - ./scripts/:/scripts/
     profiles:
       - tests
       - bob
