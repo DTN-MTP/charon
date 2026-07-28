@@ -3,7 +3,12 @@
 #include <csp/interfaces/csp_if_lo.h>
 #include <stdlib.h>
 
+<<<<<<< Updated upstream
 // Internal struct to pass handler, context, and connection to threads
+=======
+// Struct to pass handler, context, and connection to threads
+// Defined in csp.h for test accessibility
+>>>>>>> Stashed changes
 typedef struct {
   csp_handler_func handler;
   void *context;
@@ -11,7 +16,11 @@ typedef struct {
 } csp_thread_args;
 
 // Trampoline function for pthread_create - unpacks the args struct
+<<<<<<< Updated upstream
 static void *csp_handler_trampoline(void *arg) {
+=======
+void *csp_handler_trampoline(void *arg) {
+>>>>>>> Stashed changes
   csp_thread_args *args = (csp_thread_args *)arg;
   void *result = args->handler(args->context, args->conn);
   free(args);
