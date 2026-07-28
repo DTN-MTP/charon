@@ -13,9 +13,6 @@
 
 #define BUF_SIZE 2048
 
-// Forward declaration for message_handler
-void message_handler(aap2_answer *answer, void* rx);
-
 // send packet to DTN interface ifnet -> dtn
 // must close fds on error
 int charon_forward_packet(charon_tunnel *tunnel, const charon_config *config,
@@ -130,7 +127,7 @@ void *_charon_listen_tun(void *arg) {
   return NULL;
 }
 
-void message_handler(aap2_answer *answer, void* rx) {
+void tun_message_handler(aap2_answer *answer, void* rx) {
   int* fd = (int*) rx;
   if (write(*fd, answer->payload, answer->message->adu->payload_length) <
       0) { // might need to replace write() with a more specific function
@@ -142,7 +139,7 @@ void message_handler(aap2_answer *answer, void* rx) {
 void *_charon_listen_aap2(void *arg) {
   listen_tun_args *args = (listen_tun_args *)arg;
   charon_tunnel *tunnel = args->tunnel;
-  recv_aap2(tunnel->dtn_rx_interface, message_handler, (void*) &tunnel->net_interface);
+  recv_aap2(tunnel->dtn_rx_interface, tun_message_handler, (void*) &tunnel->net_interface);
   return NULL;
 }
 

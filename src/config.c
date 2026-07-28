@@ -57,6 +57,8 @@ static int handler(void *user, const char *section, const char *name,
       } else {
         pconfig->proxy_role = CHARON_WRITE;
       }
+    } else if (strcmp(name, "can_interface") == 0) {
+      pconfig->can_interface = strdup(value);
     } else {
       return 0;
     }

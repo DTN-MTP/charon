@@ -232,7 +232,6 @@ aap2_client *connect_aap2(const char *aap2_url, const char *secret_name) {
               secret_name);
     exit(1);
   }
-  log_info(secret);
 
   client->infos = infos;
   client->node_eid = node_eid;
@@ -254,7 +253,7 @@ int configure_aap2(aap2_client *client, int is_subscriber,
 
   if (sprintf(eid, "%s%s", client->node_eid, agent_id) < 0) {
     log_error("Couldn't build EID and agent ID");
-	free(eid);
+    free(eid);
     return -1;
   }
 
@@ -275,36 +274,33 @@ int configure_aap2(aap2_client *client, int is_subscriber,
 
   if (send_varint(client->socket_fd, packed_size) < 0) {
     log_error("Couldn't send varint");
-	free(buf);
-	free(eid);
+    free(buf);
+    free(eid);
     return -1;
   }
 
   if (send_exact(client->socket_fd, buf, packed_size) < 0) {
     log_error("Couldn't send configuration");
-	free(eid);
-	free(buf);
+    free(eid);
+    free(buf);
     return -1;
   }
 
-  log_info("Configuration sent !");
   free(buf);
 
   uint64_t msg_size;
   if (recv_varint(client->socket_fd, &msg_size) < 0) {
     log_error("Couldn't receive var int");
-	free(eid);
+    free(eid);
     return -1;
   }
-
-  log_info("Received everything %i", msg_size);
 
   uint8_t *message = malloc(msg_size);
 
   if (recv_exact(client->socket_fd, message, msg_size) < 0) {
     log_error("Couldn't receive EID.");
-	free(message);
-	free(eid);
+    free(message);
+    free(eid);
     return -1;
   }
 
@@ -321,8 +317,6 @@ int handle_aap2_response(uint8_t *message, uint64_t msg_size) {
 
   Aap2__AAPResponse *aap2_response =
       aap2__aapresponse__unpack(NULL, msg_size, message);
-
-  log_info("%i", aap2_response->response_status);
 
   switch (aap2_response->response_status) {
   case AAP2__RESPONSE_STATUS__RESPONSE_STATUS_UNSPECIFIED:
@@ -380,8 +374,7 @@ int send_aap2(aap2_client *client, const char *dst_eid, uint8_t *payload,
 
   char *agent_id = "charon";
 
-  char *eid =
-      malloc(strlen(agent_id) + strlen(client->node_eid) + 1);
+  char *eid = malloc(strlen(agent_id) + strlen(client->node_eid) + 1);
 
   if (sprintf(eid, "%s%s", client->node_eid, agent_id) < 0) {
     log_error("Couldn't build EID and agent ID");
@@ -416,11 +409,10 @@ int send_aap2(aap2_client *client, const char *dst_eid, uint8_t *payload,
     return -1;
   }
 
-  log_info("Configuration sent !");
   free(buf);
   free(eid);
 
-  return -1;
+  return 0;
 }
 
 int send_response_status(aap2_client *client) {
@@ -435,7 +427,7 @@ int send_response_status(aap2_client *client) {
   aap2__aapresponse__pack(&aap_response, buf);
 
   if (send_varint(client->socket_fd, packed_size) < 0) {
-    log_error("Couldn't send varint");
+    log_error("Couldn't send varint for bundle response");
     return -1;
   }
 
@@ -444,18 +436,19 @@ int send_response_status(aap2_client *client) {
     return -1;
   }
 
-  log_info("Bundle response sent !");
   free(buf);
 
   return 0;
 }
 
 int recv_one_adu(aap2_answer *answer, int fd, aap2_client *client) {
+  log_debug("Processing single adu");
   uint64_t msg_size;
   if (recv_varint(fd, &msg_size) < 0) {
     log_error("Couldn't receive var int");
     return -1;
   }
+  log_debug("Receiving adu of size : %i", msg_size);
   uint8_t *message = malloc(msg_size);
 
   if (recv_exact(fd, message, msg_size) < 0) {
@@ -463,6 +456,8 @@ int recv_one_adu(aap2_answer *answer, int fd, aap2_client *client) {
 
     return -1;
   }
+
+  log_debug("Received aap2 message : %s of size : %i", message, msg_size);
 
   Aap2__AAPMessage *aap2_message =
       aap2__aapmessage__unpack(NULL, msg_size, message);
@@ -489,12 +484,12 @@ int recv_one_adu(aap2_answer *answer, int fd, aap2_client *client) {
   return 0;
 }
 
-int recv_aap2(aap2_client *client, aap2_message_handler handler, void* rx) {
+int recv_aap2(aap2_client *client, aap2_message_handler handler, void *rx) {
   fd_set read_fds;
   int fd = client->socket_fd;
 
   while (1) {
-    struct timeval tv = { .tv_sec = 0, .tv_usec = 5000 };
+    struct timeval tv = {.tv_sec = 0, .tv_usec = 5000};
     FD_ZERO(&read_fds);
     FD_SET(fd, &read_fds);
     if (select(fd + 1, &read_fds, NULL, NULL, &tv) < 0) {
@@ -506,9 +501,10 @@ int recv_aap2(aap2_client *client, aap2_message_handler handler, void* rx) {
 
     if (FD_ISSET(fd, &read_fds)) {
       aap2_answer answer;
+      log_debug("Data in aap2 fd");
       int res = recv_one_adu(&answer, fd, client);
       if (res < 0) {
-        return -1;
+        return -2;
       }
       handler(&answer, rx);
       aap2__aapmessage__free_unpacked(answer.message, NULL);

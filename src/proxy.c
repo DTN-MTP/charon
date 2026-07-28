@@ -1,8 +1,6 @@
 #include "proxy.h"
+#include "aap2_client.h"
 #include "log.h"
-
-// Forward declaration for message_handler
-void message_handler(aap2_answer *answer, void *rx);
 
 int charon_proxy_init(charon_proxy *proxy, charon_config *config) {
   aap2_client *tx = connect_aap2(config->aap2_address, config->secret_name);
@@ -37,12 +35,16 @@ static void *csp_to_bpa(void *context, csp_conn_t *conn) {
   charon_config *config = args->config;
   csp_packet_t *packet;
 
+  log_debug("Launching csp to bpa");
+
   while (1) {
-    packet = csp_read(conn, 100);
+    packet = csp_read(conn, CSP_MAX_TIMEOUT);
     if (packet != NULL) {
+      log_debug("Sending to bpa %s, size : %i", packet->data, packet->length);
       if (send_aap2(proxy->dtn_tx_interface, config->remote_eid, packet->data,
                     packet->length) < 0) {
         log_warn("Failed to send CSP packet to BPA");
+        csp_buffer_free(packet);
         continue;
       }
       csp_buffer_free(packet);
@@ -52,7 +54,8 @@ static void *csp_to_bpa(void *context, csp_conn_t *conn) {
   return NULL;
 }
 
-void message_handler(aap2_answer *answer, void *rx) {
+void csp_message_handler(aap2_answer *answer, void *rx) {
+  log_debug("Received aap2 answer : %s", answer->payload);
   csp_conn_t *conn = (csp_conn_t *)rx;
   if (answer == NULL || answer->payload == NULL) {
     log_warn("Received NULL answer or payload");
@@ -84,7 +87,7 @@ static void *bpa_to_csp(void *context, csp_conn_t *conn) {
   csp_handler_args *args = (csp_handler_args *)context;
   charon_proxy *proxy = args->proxy;
 
-  recv_aap2(proxy->dtn_rx_interface, message_handler, (void *)conn);
+  recv_aap2(proxy->dtn_rx_interface, csp_message_handler, (void *)conn);
   return NULL;
 }
 
@@ -95,12 +98,13 @@ void *_charon_proxy_listen_csp(void *arg) {
 
   // Create handler args to pass as context
   csp_handler_args handler_args = {
-    .proxy = proxy,
-    .config = config,
-    .csp_conn = NULL  // Will be set per-connection by csp_proxy_listen
+      .proxy = proxy,
+      .config = config,
+      .csp_conn = NULL // Will be set per-connection by csp_proxy_listen
   };
 
-  if (csp_proxy_listen(config->csp_port, &handler_args, csp_to_bpa, bpa_to_csp) < 0) {
+  if (csp_proxy_listen(config->csp_port, &handler_args, csp_to_bpa,
+                       bpa_to_csp) < 0) {
     return NULL;
   }
 
@@ -108,48 +112,42 @@ void *_charon_proxy_listen_csp(void *arg) {
 }
 
 void *_charon_proxy_listen_aap2(void *arg) {
-	listen_csp_args *args = (listen_csp_args *)arg;
-	charon_proxy *proxy = args->proxy;
-	charon_config *config = args->config;
-	
-	// Create handler args to pass as context
-	csp_handler_args handler_args = {
-		.proxy = proxy,
-		.config = config,
-		.csp_conn = NULL
-	};
-	
-	csp_proxy_send(config->peer_csp_address, config->csp_port, &handler_args, bpa_to_csp, csp_to_bpa);
-	return NULL;
+  listen_csp_args *args = (listen_csp_args *)arg;
+  charon_proxy *proxy = args->proxy;
+  charon_config *config = args->config;
+
+  // Create handler args to pass as context
+  csp_handler_args handler_args = {
+      .proxy = proxy, .config = config, .csp_conn = NULL};
+
+  csp_proxy_send(config->peer_csp_address, config->csp_port, &handler_args,
+                 bpa_to_csp, csp_to_bpa);
+  return NULL;
 }
 
 int charon_run_proxy(charon_proxy *proxy, charon_config *config) {
-	pthread_t thread1, thread2;
+  pthread_t thread1, thread2;
 
-	listen_csp_args listen_args = {
-		.config = config,
-		.proxy = proxy
-	};
+  listen_csp_args listen_args = {.config = config, .proxy = proxy};
 
-	// Create listener thread for incoming CSP connections
-	if (pthread_create(&thread1, NULL, _charon_proxy_listen_csp, &listen_args) != 0) {
-		log_error("Failed to create CSP listener thread");
-		return -1;
-	}
+  // Create listener thread for incoming CSP connections
+  if (pthread_create(&thread1, NULL, _charon_proxy_listen_csp, &listen_args) !=
+      0) {
+    log_error("Failed to create CSP listener thread");
+    return -1;
+  }
 
-	// Create listener thread for outgoing CSP connections
-	listen_csp_args send_args = {
-		.config = config,
-		.proxy = proxy
-	};
-	if (pthread_create(&thread2, NULL, _charon_proxy_listen_aap2, &send_args) != 0) {
-		log_error("Failed to create CSP sender thread");
-		pthread_join(thread1, NULL);
-		return -1;
-	}
+  // Create listener thread for outgoing CSP connections
+  listen_csp_args send_args = {.config = config, .proxy = proxy};
+  if (pthread_create(&thread2, NULL, _charon_proxy_listen_aap2, &send_args) !=
+      0) {
+    log_error("Failed to create CSP sender thread");
+    pthread_join(thread1, NULL);
+    return -1;
+  }
 
-	pthread_join(thread1, NULL);
-	pthread_join(thread2, NULL);
+  pthread_join(thread1, NULL);
+  pthread_join(thread2, NULL);
 
-	return 0;
+  return 0;
 }

@@ -1,0 +1,15 @@
+[bundle]
+aap2_address=tcp://alice-ud3tn:4225
+remote_eid=dtn://bob.dtn/charon
+secret_name=D3TN_AAP2_KEY
+
+[interface]
+type=csp
+
+[csp]
+port=10
+can_interface=vcan0
+role=client
+remote_address=1
+agent_address=2
+

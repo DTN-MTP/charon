@@ -3,6 +3,7 @@ CFLAGS  = -Wall -Wextra -g -O2 \
 	-Isrc \
 	-DLOG_USE_COLOR \
 	-g
+
 LDFLAGS = -lprotobuf-c -lpthread
 
 # ============================================================================
@@ -23,7 +24,8 @@ SRC = src/*.c \
 	  src/proto/*.c
 
 TEST_SRC = $(filter-out src/main.c, $(wildcard src/*.c)) \
-      $(wildcard src/proto/*.c)
+      $(wildcard src/proto/*.c) \
+	  tests/helpers.c
 
 TEST_DIR  = tests
 BUILD_DIR = build

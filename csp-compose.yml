@@ -1,0 +1,178 @@
+x-healthcheck-defaults: &healthcheck-defaults
+  interval: 5s
+  timeout: 5s
+  retries: 10
+  start_period: 1s
+
+services:
+  alice:
+    build: .
+    container_name: alice
+    environment:
+      D3TN_AAP2_KEY: "my_extremely_secret_secret_omg_i_love_this_secretly_secret_secret"
+    networks:
+      - charon
+    command:
+      - /scripts/init.sh
+      - '&&'
+      - /app/charon
+      - /app/conf/charon.toml
+    cap_add:
+      - NET_ADMIN
+    volumes:
+      - ./configs/csp/alice/:/app/conf/
+      - ./scripts/:/scripts/
+    profiles:
+      - tests
+      - alice
+    depends_on:
+      ud3tn-config-rx:
+        condition: service_completed_successfully
+      ud3tn-config:
+        condition: service_completed_successfully
+  bob:
+    build: .
+    container_name: bob
+    environment:
+      D3TN_AAP2_KEY: "my_extremely_secret_secret_omg_i_love_this_secretly_secret_secret"
+    networks:
+      - charon
+    cap_add:
+      - NET_ADMIN
+    command:
+      - /scripts/init.sh
+      - '&&'
+      - /app/charon
+      - /app/conf/charon.toml
+    volumes:
+      - ./configs/csp/bob:/app/conf/
+      - ./scripts/:/scripts/
+    profiles:
+      - tests
+      - bob
+    depends_on:
+      ud3tn-config-rx:
+        condition: service_completed_successfully
+      ud3tn-config:
+        condition: service_completed_successfully
+
+  alice-ud3tn:
+    image: registry.gitlab.com/d3tn/ud3tn-docker-images/ud3tn:v0.15.0
+    networks:
+      - charon
+    ports:
+      - 4225:4225
+    environment:
+      AAP2_SECRET: "my_extremely_secret_secret_omg_i_love_this_secretly_secret_secret"
+    command:
+      - --allow-remote-config
+      - -b
+      - "7"
+      - -c
+      - "mtcp:*,4224"
+      - -e
+      - dtn://alice.dtn/
+      - -l
+      - "86400"
+      - -L
+      - "4"
+      - -m
+      - "0"
+      - -P
+      - "4225"
+      - -A
+      - 0.0.0.0
+      - -x
+      - "AAP2_SECRET"
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep ud3tn > /dev/null || exit 1"]
+      interval: 1s
+      timeout: 5s
+      retries: 1
+      start_period: 1s
+  bob-ud3tn:
+    image: registry.gitlab.com/d3tn/ud3tn-docker-images/ud3tn:v0.15.0
+    networks:
+      - charon
+    environment:
+      AAP2_SECRET: "my_extremely_secret_secret_omg_i_love_this_secretly_secret_secret"
+    ports:
+      - 4226:4225
+    command:
+      - --allow-remote-config
+      - -b
+      - "7"
+      - -c
+      - "mtcp:*,4224"
+      - -e
+      - dtn://bob.dtn/
+      - -l
+      - "86400"
+      - -L
+      - "4"
+      - -m
+      - "0"
+      - -P
+      - "4225"
+      - -A
+      - 0.0.0.0
+      - -x
+      - "AAP2_SECRET"
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep ud3tn > /dev/null || exit 1"]
+      interval: 1s
+      timeout: 5s
+      retries: 1
+      start_period: 1s
+  ud3tn-config:
+    image: ud3tn-python:exp
+    networks:
+      - charon
+    environment:
+      AAP2_SECRET: "my_extremely_secret_secret_omg_i_love_this_secretly_secret_secret"
+    command:
+      - /usr/local/bin/aap2-config
+      - --tcp
+      - alice-ud3tn
+      - "4225"
+      - --secret-var
+      - AAP2_SECRET
+      - --schedule
+      - "1"
+      - "3600000"
+      - "100000"
+      - dtn://bob.dtn/
+      - "mtcp:bob-ud3tn:4224"
+    depends_on:
+      alice-ud3tn:
+        condition: service_healthy
+      bob-ud3tn:
+        condition: service_healthy
+  ud3tn-config-rx:
+    image: ud3tn-python:exp
+    networks:
+      - charon
+    environment:
+      AAP2_SECRET: "my_extremely_secret_secret_omg_i_love_this_secretly_secret_secret"
+    command:
+      - /usr/local/bin/aap2-config
+      - --tcp
+      - bob-ud3tn
+      - "4225"
+      - --secret-var
+      - AAP2_SECRET
+      - --schedule
+      - "1"
+      - "3600000"
+      - "100000"
+      - dtn://alice.dtn/
+      - "mtcp:alice-ud3tn:4224"
+    depends_on:
+      alice-ud3tn:
+        condition: service_healthy
+      bob-ud3tn:
+        condition: service_healthy
+
+networks:
+  charon:
+    driver: bridge

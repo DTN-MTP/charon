@@ -5,17 +5,17 @@
 
 // Internal struct to pass handler, context, and connection to threads
 typedef struct {
-	csp_handler_func handler;
-	void *context;
-	csp_conn_t *conn;
+  csp_handler_func handler;
+  void *context;
+  csp_conn_t *conn;
 } csp_thread_args;
 
 // Trampoline function for pthread_create - unpacks the args struct
 static void *csp_handler_trampoline(void *arg) {
-	csp_thread_args *args = (csp_thread_args *)arg;
-	void *result = args->handler(args->context, args->conn);
-	free(args);
-	return result;
+  csp_thread_args *args = (csp_thread_args *)arg;
+  void *result = args->handler(args->context, args->conn);
+  free(args);
+  return result;
 }
 
 // I based my implementation on work that I did here :
@@ -67,8 +67,7 @@ int csp_setup_interface(char *can_device) {
 // On responses, charon send the answer to the app through CSP
 // rx_thread CSP -> BPA
 // tx_thread (main thread) BPA -> CSP
-int csp_proxy_listen(int port, void *context,
-                     csp_handler_func rx_handler,
+int csp_proxy_listen(int port, void *context, csp_handler_func rx_handler,
                      csp_handler_func tx_handler) {
   csp_socket_t *sock = csp_socket(CSP_SO_NONE);
   csp_bind(sock, port);
@@ -78,8 +77,9 @@ int csp_proxy_listen(int port, void *context,
     csp_conn_t *conn;
 
     if ((conn = csp_accept(sock, 10000)) == NULL) {
-      continue;
+      continue; //timeout, renewing a new connection -> to be fair I don't know why such mechanism is needed but I don't make the choices here, libcsp does
     }
+
 
     // Create args for rx thread with context and connection
     csp_thread_args *rx_args = malloc(sizeof(csp_thread_args));
@@ -88,7 +88,8 @@ int csp_proxy_listen(int port, void *context,
     rx_args->conn = conn;
 
     pthread_t rx_thread;
-    if (pthread_create(&rx_thread, NULL, csp_handler_trampoline, rx_args) != 0) {
+    if (pthread_create(&rx_thread, NULL, csp_handler_trampoline, rx_args) !=
+        0) {
       log_error("Failed to create receiver thread");
       csp_close(conn);
       free(rx_args);
@@ -110,8 +111,7 @@ int csp_proxy_listen(int port, void *context,
 // Charon connects to the CSP app and forwards incoming
 // packets to the app
 int csp_proxy_send(int address, int port, void *context,
-                   csp_handler_func rx_handler,
-                   csp_handler_func tx_handler) {
+                   csp_handler_func rx_handler, csp_handler_func tx_handler) {
   csp_conn_t *conn =
       csp_connect(CSP_PRIO_NORM, address, port, 1000, CSP_O_NONE);
   if (conn == NULL) {
