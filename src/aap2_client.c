@@ -409,10 +409,26 @@ int send_aap2(aap2_client *client, const char *dst_eid, uint8_t *payload,
     return -1;
   }
 
+  // receive answer
+
+  uint64_t msg_size;
+  if (recv_varint(client->socket_fd, &msg_size) < 0) {
+    free(buf);
+    free(eid);
+    return -1;
+  }
+  uint8_t *message = malloc(msg_size);
+
+  if (recv_exact(client->socket_fd, message, msg_size) < 0) {
+    free(buf);
+    free(eid);
+    return -1;
+  }
+
   free(buf);
   free(eid);
 
-  return 0;
+  return handle_aap2_response(message, msg_size);
 }
 
 int send_response_status(aap2_client *client) {

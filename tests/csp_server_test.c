@@ -94,7 +94,7 @@ static void *run_server_listen(void *arg) {
   return NULL;
 }
 
-int test_should_answer_as_server() {
+int test_peer_should_receive_message() {
   charon_proxy proxy;
   charon_config config = config_for_test();
   
@@ -195,7 +195,7 @@ int main() {
     TEST_FAIL("Couldn't initialize proxy");
   }
 
-  if (test_should_answer_as_server() < 0) {
+  if (test_peer_should_receive_message() < 0) {
     TEST_FAIL("Server test failed");
   }
 

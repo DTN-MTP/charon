@@ -36,7 +36,12 @@ int send_aap2(aap2_client *client, const char *dst_eid, uint8_t *payload,
 int close_aap2(aap2_client *client);
 int recv_aap2(aap2_client *client, aap2_message_handler handler, void *rx);
 
+int recv_exact(int fd, void *buf, size_t len);
+
 int recv_varint(int fd, uint64_t *out);
 int send_varint(int fd, uint64_t value);
+
+int recv_one_adu(aap2_answer *answer, int fd, aap2_client *client);
+int handle_aap2_response(uint8_t *message, uint64_t msg_size);
 
 #endif // AAP2_CLIENT_H
