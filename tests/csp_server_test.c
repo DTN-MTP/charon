@@ -3,19 +3,14 @@
 #include "../src/config.h"
 #include "../src/log.h"
 #include "../src/proxy.h"
-<<<<<<< Updated upstream
 #include "helpers.h"
 #include "test.h"
 #include <stdlib.h>
-=======
-#include "../src/aap2_client.h"
 #include "helpers.h"
 #include "test.h"
 #include <stdlib.h>
 #include <pthread.h>
-#include <string.h>
 #include <unistd.h>
->>>>>>> Stashed changes
 
 charon_config config_for_test() {
   charon_config config = {.aap2_address = "tcp://0.0.0.0:4226",
@@ -41,7 +36,6 @@ int test_can_interface_exists() {
 }
 
 int test_can_interface_not_exists() {
-  charon_config config = config_for_test();
   int interface_status = assert_can_interface_exists("randomstuff");
   ASSERT_TRUE(interface_status < 0);
   TEST_PASS();
@@ -58,13 +52,6 @@ int test_should_init_proxy() {
   return 1;
 }
 
-<<<<<<< Updated upstream
-int test_should_answer_as_server() {
-  charon_proxy proxy;
-  charon_config config = config_for_test();
-  charon_proxy_init(&proxy, &config);
-
-=======
 // Wrapper for csp_proxy_listen that can be stopped with a flag
 typedef struct {
   csp_handler_args *handler_args;
@@ -190,7 +177,6 @@ int test_should_answer_as_server() {
   
   TEST_PASS();
   return 1;
->>>>>>> Stashed changes
 }
 
 int main() {
@@ -209,12 +195,10 @@ int main() {
     TEST_FAIL("Couldn't initialize proxy");
   }
 
-<<<<<<< Updated upstream
-=======
   if (test_should_answer_as_server() < 0) {
     TEST_FAIL("Server test failed");
   }
 
->>>>>>> Stashed changes
+  exit(0);
   return 0;
 }

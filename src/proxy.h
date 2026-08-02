@@ -24,10 +24,7 @@ typedef struct {
 
 int charon_proxy_init(charon_proxy *proxy, charon_config *config);
 int charon_run_proxy(charon_proxy *proxy, charon_config *config);
-<<<<<<< Updated upstream
-=======
 
-// for test sakes
-static void *csp_to_bpa(void *context, csp_conn_t *conn);
-static void *bpa_to_csp(void *context, csp_conn_t *conn);
->>>>>>> Stashed changes
+// Handler functions (defined in proxy.c)
+void *csp_to_bpa(void *context, csp_conn_t *conn);
+void *bpa_to_csp(void *context, csp_conn_t *conn);

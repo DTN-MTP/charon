@@ -29,7 +29,7 @@ int charon_proxy_init(charon_proxy *proxy, charon_config *config) {
 
 // called everytime a new csp connection is initiated
 // Handler for CSP -> BPA direction (receiving from CSP, sending to BPA)
-static void *csp_to_bpa(void *context, csp_conn_t *conn) {
+void *csp_to_bpa(void *context, csp_conn_t *conn) {
   csp_handler_args *args = (csp_handler_args *)context;
   charon_proxy *proxy = args->proxy;
   charon_config *config = args->config;
@@ -83,7 +83,7 @@ void csp_message_handler(aap2_answer *answer, void *rx) {
 }
 
 // Handler for BPA -> CSP direction (receiving from BPA, sending to CSP)
-static void *bpa_to_csp(void *context, csp_conn_t *conn) {
+void *bpa_to_csp(void *context, csp_conn_t *conn) {
   csp_handler_args *args = (csp_handler_args *)context;
   charon_proxy *proxy = args->proxy;
 
