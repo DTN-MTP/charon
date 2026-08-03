@@ -1,7 +1,8 @@
 CC      = gcc
 CFLAGS  = -Wall -Wextra -O2 \
 	-Isrc \
-	-DLOG_USE_COLOR
+	-DLOG_USE_COLOR \
+	-g
 
 LDFLAGS = -lprotobuf-c -lpthread
 

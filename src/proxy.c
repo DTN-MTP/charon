@@ -1,58 +1,7 @@
 #include "proxy.h"
 #include "aap2_client.h"
 #include "log.h"
-
-int charon_proxy_init(charon_proxy *proxy, charon_config *config) {
-  aap2_client *tx = connect_aap2(config->aap2_address, config->secret_name);
-  if (configure_aap2(tx, 0, 0) < 0) {
-    return -1;
-  }
-
-  aap2_client *rx = connect_aap2(config->aap2_address, config->secret_name);
-  if (configure_aap2(rx, 1, 0) < 0) {
-    return -1;
-  }
-
-  proxy->dtn_tx_interface = tx;
-  proxy->dtn_rx_interface = rx;
-
-  if (csp_setup_route(config->local_csp_address) < 0) {
-    return -1;
-  }
-
-  if (csp_setup_interface(config->can_interface) < 0) {
-    return -1;
-  }
-
-  return 1;
-}
-
-// called everytime a new csp connection is initiated
-// Handler for CSP -> BPA direction (receiving from CSP, sending to BPA)
-void *csp_to_bpa(void *context, csp_conn_t *conn) {
-  csp_handler_args *args = (csp_handler_args *)context;
-  charon_proxy *proxy = args->proxy;
-  charon_config *config = args->config;
-  csp_packet_t *packet;
-
-  log_debug("Launching csp to bpa");
-
-  while (1) {
-    packet = csp_read(conn, CSP_MAX_TIMEOUT);
-    if (packet != NULL) {
-      log_debug("Sending to bpa %s, size : %i", packet->data, packet->length);
-      if (send_aap2(proxy->dtn_tx_interface, config->remote_eid, packet->data,
-                    packet->length) < 0) {
-        log_warn("Failed to send CSP packet to BPA");
-        csp_buffer_free(packet);
-        continue;
-      }
-      csp_buffer_free(packet);
-    }
-  }
-
-  return NULL;
-}
+#include <stdlib.h>
 
 void csp_message_handler(aap2_answer *answer, void *rx) {
   log_debug("Received aap2 answer : %s", answer->payload);
@@ -82,12 +31,65 @@ void csp_message_handler(aap2_answer *answer, void *rx) {
   }
 }
 
+int charon_proxy_init(charon_proxy *proxy, charon_config *config) {
+  aap2_client tx;
+  aap2_client rx;
+
+  aap2_init_client(&tx, csp_message_handler);
+  aap2_init_client(&rx, csp_message_handler);
+
+  connect_aap2(&tx, config->aap2_address, config->secret_name);
+  if (configure_aap2(&tx, 0, 0) < 0) {
+    return -1;
+  }
+
+  connect_aap2(&rx, config->aap2_address, config->secret_name);
+  if (configure_aap2(&rx, 1, 0) < 0) {
+    return -1;
+  }
+
+  proxy->dtn_tx_interface = &tx;
+  proxy->dtn_rx_interface = &rx;
+
+  if (csp_setup_route(config->local_csp_address) < 0) {
+    return -1;
+  }
+
+  if (csp_setup_interface(config->can_interface) < 0) {
+    return -1;
+  }
+
+  return 1;
+}
+
+// called everytime a new csp connection is initiated
+// Handler for CSP -> BPA direction (receiving from CSP, sending to BPA)
+void *csp_to_bpa(void *context, csp_conn_t *conn) {
+  csp_handler_args *args = (csp_handler_args *)context;
+  charon_proxy *proxy = args->proxy;
+  charon_config *config = args->config;
+  csp_packet_t *packet;
+
+  log_debug("Launching csp to bpa");
+
+  while (1) {
+    packet = csp_read(conn, CSP_MAX_TIMEOUT);
+    if (packet != NULL) {
+      send_aap2(proxy->dtn_tx_interface, config->remote_eid, packet->data,
+                packet->length);
+      csp_buffer_free(packet);
+    }
+  }
+
+  return NULL;
+}
+
 // Handler for BPA -> CSP direction (receiving from BPA, sending to CSP)
 void *bpa_to_csp(void *context, csp_conn_t *conn) {
   csp_handler_args *args = (csp_handler_args *)context;
   charon_proxy *proxy = args->proxy;
 
-  recv_aap2(proxy->dtn_rx_interface, csp_message_handler, (void *)conn);
+  recv_aap2(proxy->dtn_rx_interface, (void *)conn);
   return NULL;
 }
 

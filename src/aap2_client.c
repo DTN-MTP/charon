@@ -5,10 +5,12 @@
 #include <fcntl.h>
 #include <net/if.h>
 #include <netdb.h>
+#include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/poll.h>
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -143,6 +145,28 @@ int create_unix_socket(const char *path) {
   return fd;
 }
 
+void send_aap2(aap2_client *client, const char *dst_eid, uint8_t *payload,
+               size_t payload_len) {
+  aap2_message *msg = malloc(sizeof(*msg));
+  msg->payload = malloc(payload_len);
+  memcpy(msg->payload, payload, payload_len);
+  msg->payload_len = payload_len;
+  msg->dst_eid = malloc(strlen(dst_eid) + 1);
+  strncpy(msg->dst_eid, dst_eid, strlen(dst_eid) + 1);
+  msg->next = NULL;
+
+  pthread_mutex_lock(&client->lock);
+  if (!client->tx_head) {
+    client->tx_head = msg;
+  } else {
+    client->tx_tail->next = msg;
+  }
+
+  client->tx_tail = msg;
+  pthread_cond_signal(&client->cond);
+  pthread_mutex_unlock(&client->lock);
+}
+
 int create_tcp_socket(const char *host, const char *port) {
   int fd = socket(AF_INET, SOCK_STREAM, 0);
   int rv;
@@ -208,7 +232,17 @@ char *receive_welcome_message(int fd) {
   return aap2_message->welcome->node_id;
 }
 
-aap2_client *connect_aap2(const char *aap2_url, const char *secret_name) {
+void aap2_init_client(aap2_client *client, aap2_message_handler handler) {
+  memset(client, 0, sizeof(*client));
+  client->socket_fd = -1;
+  client->on_recv = handler;
+  client->running= 1;
+  pthread_mutex_init(&client->lock, NULL);
+  pthread_cond_init(&client->cond, NULL);
+}
+
+void connect_aap2(aap2_client *client, const char *aap2_url,
+                  const char *secret_name) {
   aap2info infos = getaap2info(aap2_url);
 
   int socket_fd;
@@ -225,7 +259,6 @@ aap2_client *connect_aap2(const char *aap2_url, const char *secret_name) {
     exit(1);
   }
 
-  aap2_client *client = calloc(1, sizeof(aap2_client));
   char *secret = getenv(secret_name);
   if (secret == NULL) {
     log_error("Couldn't retrieve AAP2 secret at this env variable : %s",
@@ -237,8 +270,6 @@ aap2_client *connect_aap2(const char *aap2_url, const char *secret_name) {
   client->node_eid = node_eid;
   client->socket_fd = socket_fd;
   client->secret = secret;
-
-  return client;
 }
 
 // https://protobuf-c.github.io/protobuf-c/pack.html
@@ -367,8 +398,8 @@ int handle_aap2_response(uint8_t *message, uint64_t msg_size) {
   }
 }
 
-int send_aap2(aap2_client *client, const char *dst_eid, uint8_t *payload,
-              size_t payload_len) {
+int write_aap2(aap2_client *client, aap2_message *message) {
+  pthread_mutex_lock(&client->lock);
   Aap2__BundleADU bundle_adu;
   aap2__bundle_adu__init(&bundle_adu);
 
@@ -378,12 +409,13 @@ int send_aap2(aap2_client *client, const char *dst_eid, uint8_t *payload,
 
   if (sprintf(eid, "%s%s", client->node_eid, agent_id) < 0) {
     log_error("Couldn't build EID and agent ID");
+    pthread_mutex_unlock(&client->lock);
     return -1;
   }
 
-  bundle_adu.dst_eid = (char *)dst_eid;
+  bundle_adu.dst_eid = message->dst_eid;
   bundle_adu.src_eid = eid;
-  bundle_adu.payload_length = payload_len;
+  bundle_adu.payload_length = message->payload_len;
 
   Aap2__AAPMessage wrapper;
   aap2__aapmessage__init(&wrapper);
@@ -396,16 +428,20 @@ int send_aap2(aap2_client *client, const char *dst_eid, uint8_t *payload,
 
   if (send_varint(client->socket_fd, packed_size) < 0) {
     log_error("Couldn't send varint");
+    pthread_mutex_unlock(&client->lock);
     return -1;
   }
 
   if (send_exact(client->socket_fd, buf, packed_size) < 0) {
     log_error("Couldn't send configuration");
+    pthread_mutex_unlock(&client->lock);
     return -1;
   }
 
-  if (send_exact(client->socket_fd, payload, payload_len) < 0) {
+  if (send_exact(client->socket_fd, message->payload, message->payload_len) <
+      0) {
     log_error("Couldn't send configuration");
+    pthread_mutex_unlock(&client->lock);
     return -1;
   }
 
@@ -415,20 +451,23 @@ int send_aap2(aap2_client *client, const char *dst_eid, uint8_t *payload,
   if (recv_varint(client->socket_fd, &msg_size) < 0) {
     free(buf);
     free(eid);
+    pthread_mutex_unlock(&client->lock);
     return -1;
   }
-  uint8_t *message = malloc(msg_size);
+  uint8_t *answer = malloc(msg_size);
 
-  if (recv_exact(client->socket_fd, message, msg_size) < 0) {
+  if (recv_exact(client->socket_fd, answer, msg_size) < 0) {
     free(buf);
     free(eid);
+    pthread_mutex_unlock(&client->lock);
     return -1;
   }
 
   free(buf);
   free(eid);
+  pthread_mutex_unlock(&client->lock);
 
-  return handle_aap2_response(message, msg_size);
+  return handle_aap2_response(answer, msg_size);
 }
 
 int send_response_status(aap2_client *client) {
@@ -457,7 +496,8 @@ int send_response_status(aap2_client *client) {
   return 0;
 }
 
-int recv_one_adu(aap2_answer *answer, int fd, aap2_client *client) {
+int recv_one_adu(aap2_answer *answer, aap2_client *client) {
+  int fd = client->socket_fd;
   log_debug("Processing single adu");
   uint64_t msg_size;
   if (recv_varint(fd, &msg_size) < 0) {
@@ -500,37 +540,62 @@ int recv_one_adu(aap2_answer *answer, int fd, aap2_client *client) {
   return 0;
 }
 
-int recv_aap2(aap2_client *client, aap2_message_handler handler, void *rx) {
-  fd_set read_fds;
+int recv_aap2(aap2_client *client, void *rx) {
   int fd = client->socket_fd;
 
-  while (1) {
-    struct timeval tv = {.tv_sec = 0, .tv_usec = 5000};
-    FD_ZERO(&read_fds);
-    FD_SET(fd, &read_fds);
-    if (select(fd + 1, &read_fds, NULL, NULL, &tv) < 0) {
+  while (client->running) {
+    struct pollfd pfd = {
+        .fd = fd,
+        .events = POLLIN,
+    };
+
+    pthread_mutex_lock(&client->lock);
+    if (client->tx_head)
+      pfd.events |= POLLOUT;
+    pthread_mutex_unlock(&client->lock);
+
+    int ret = poll(&pfd, 1, 100);
+    if (ret < 0) {
       if (errno == EINTR)
         continue;
-      log_error("select() failed : %s", strerror(errno));
-      return -1;
+      log_error("poll");
+      break;
     }
 
-    if (FD_ISSET(fd, &read_fds)) {
+    // incoming messages
+    if (pfd.revents & POLLIN) {
       aap2_answer answer;
-      log_debug("Data in aap2 fd");
-      int res = recv_one_adu(&answer, fd, client);
+      int res = recv_one_adu(&answer, client);
       if (res < 0) {
         return -2;
       }
-      handler(&answer, rx);
+      client->on_recv(&answer, rx);
       aap2__aapmessage__free_unpacked(answer.message, NULL);
       free(answer.payload);
     }
+
+    if (pfd.revents & POLLOUT) {
+      pthread_mutex_lock(&client->lock);
+      aap2_message *msg = client->tx_head;
+      if (msg)
+        client->tx_head = msg->next;
+      pthread_mutex_lock(&client->lock);
+
+      if (msg) {
+        write_aap2(client, msg);
+      }
+    }
   }
+
+  close(client->socket_fd);
+  client->socket_fd = -1;
+  return 1;
 }
 
 int close_aap2(aap2_client *client) {
   close(client->socket_fd);
+  pthread_mutex_destroy(&client->lock);
+  pthread_cond_destroy(&client->cond);
 
   return 1;
 }
