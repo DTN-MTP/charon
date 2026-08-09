@@ -23,10 +23,20 @@ jobs:
             protobuf-c-compiler \
             protobuf-compiler \
             libprotobuf-c-dev  \
-            git
+            git \
+            python3 \
+            python3-pip \
+            python3-dev \
+            build-essential \
+            pkg-config \
+            libsocketcan-dev
       - name: Install libcsp
         run: |
           git clone --depth 1 --branch v1.6 https://github.com/libcsp/libcsp
+          cd libcsp
+          ./waf configure --enable-can-socketcan
+          ./waf
+          cd ..
 
       - name: Run unit tests
         run: |
