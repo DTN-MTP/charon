@@ -30,6 +30,10 @@ jobs:
             build-essential \
             pkg-config \
             libsocketcan-dev
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
       - name: Install libcsp
         run: |
           git clone --depth 1 --branch v1.6 https://github.com/libcsp/libcsp
