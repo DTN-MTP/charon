@@ -57,6 +57,8 @@ int recv_exact(int fd, void *buf, size_t len);
 
 int recv_varint(int fd, uint64_t *out);
 int send_varint(int fd, uint64_t value);
+int send_framed(int fd, const uint8_t *msg, size_t msg_len,
+                const uint8_t *payload, size_t payload_len);
 
 int recv_one_adu(aap2_answer *answer, aap2_client *client);
 int handle_aap2_response(uint8_t *message, uint64_t msg_size);
