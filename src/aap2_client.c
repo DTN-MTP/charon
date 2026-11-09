@@ -5,6 +5,8 @@
 #include <fcntl.h>
 #include <net/if.h>
 #include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -52,20 +54,50 @@ int recv_varint(int fd, uint64_t *out) {
   return -1;
 }
 
-int send_varint(int fd, uint64_t value) {
-  uint8_t buf[10];
-  int i = 0;
+// Encodes `value` as a protobuf varint into `out` (at least 10 bytes).
+// Returns the number of bytes written.
+static size_t encode_varint(uint64_t value, uint8_t *out) {
+  size_t i = 0;
 
   do {
-    buf[i++] = (uint8_t)(value & 0x7F);
+    out[i++] = (uint8_t)(value & 0x7F);
     value >>= 7;
   } while (value != 0);
 
-  for (int j = 0; j < i - 1; j++) {
-    buf[j] |= 0x80;
+  for (size_t j = 0; j < i - 1; j++) {
+    out[j] |= 0x80;
   }
 
-  return send_exact(fd, buf, i);
+  return i;
+}
+
+int send_varint(int fd, uint64_t value) {
+  uint8_t buf[10];
+  return send_exact(fd, buf, encode_varint(value, buf));
+}
+
+// Sends varint(msg_len) + msg + payload with a single send_exact() call.
+// Writing the frame in several small send() calls triggers Nagle's algorithm
+// combined with the peer's delayed ACK, stalling each message by ~40 ms.
+int send_framed(int fd, const uint8_t *msg, size_t msg_len,
+                const uint8_t *payload, size_t payload_len) {
+  uint8_t *frame = malloc(10 + msg_len + payload_len);
+  if (frame == NULL) {
+    log_error("OOM");
+    return -1;
+  }
+
+  size_t off = encode_varint(msg_len, frame);
+  memcpy(frame + off, msg, msg_len);
+  off += msg_len;
+  if (payload_len > 0) {
+    memcpy(frame + off, payload, payload_len);
+    off += payload_len;
+  }
+
+  int ret = send_exact(fd, frame, off);
+  free(frame);
+  return ret;
 }
 
 aap2info getaap2info(const char *aap2_url) {
@@ -186,6 +218,13 @@ int create_tcp_socket(const char *host, const char *port) {
     return -1;
   }
 
+  // AAP2 is a request/response protocol made of small messages: disable
+  // Nagle's algorithm so they are not held back waiting for a delayed ACK.
+  int one = 1;
+  if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one)) < 0) {
+    log_warn("Couldn't set TCP_NODELAY: %s", strerror(errno));
+  }
+
   if (connect(fd, servinfo->ai_addr, servinfo->ai_addrlen) < 0) {
     log_error("Couldn't connect to ip socket");
     close(fd);
@@ -303,14 +342,7 @@ int configure_aap2(aap2_client *client, int is_subscriber,
   uint8_t *buf = malloc(packed_size + 1);
   aap2__aapmessage__pack(&wrapper, buf);
 
-  if (send_varint(client->socket_fd, packed_size) < 0) {
-    log_error("Couldn't send varint");
-    free(buf);
-    free(eid);
-    return -1;
-  }
-
-  if (send_exact(client->socket_fd, buf, packed_size) < 0) {
+  if (send_framed(client->socket_fd, buf, packed_size, NULL, 0) < 0) {
     log_error("Couldn't send configuration");
     free(eid);
     free(buf);
@@ -426,21 +458,11 @@ int write_aap2(aap2_client *client, aap2_message *message) {
   uint8_t *buf = malloc(packed_size);
   aap2__aapmessage__pack(&wrapper, buf);
 
-  if (send_varint(client->socket_fd, packed_size) < 0) {
-    log_error("Couldn't send varint");
-    pthread_mutex_unlock(&client->lock);
-    return -1;
-  }
-
-  if (send_exact(client->socket_fd, buf, packed_size) < 0) {
-    log_error("Couldn't send configuration");
-    pthread_mutex_unlock(&client->lock);
-    return -1;
-  }
-
-  if (send_exact(client->socket_fd, message->payload, message->payload_len) <
-      0) {
-    log_error("Couldn't send configuration");
+  if (send_framed(client->socket_fd, buf, packed_size, message->payload,
+                  message->payload_len) < 0) {
+    log_error("Couldn't send ADU");
+    free(buf);
+    free(eid);
     pthread_mutex_unlock(&client->lock);
     return -1;
   }
@@ -481,13 +503,9 @@ int send_response_status(aap2_client *client) {
 
   aap2__aapresponse__pack(&aap_response, buf);
 
-  if (send_varint(client->socket_fd, packed_size) < 0) {
-    log_error("Couldn't send varint for bundle response");
-    return -1;
-  }
-
-  if (send_exact(client->socket_fd, buf, packed_size) < 0) {
+  if (send_framed(client->socket_fd, buf, packed_size, NULL, 0) < 0) {
     log_error("Couldn't send bundle response");
+    free(buf);
     return -1;
   }
 
